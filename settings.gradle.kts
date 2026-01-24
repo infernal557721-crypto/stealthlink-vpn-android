@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "StealthLinkVPN"
+rootProject.name = "VpnCode"
 include(":app")
