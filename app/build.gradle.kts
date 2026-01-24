@@ -55,6 +55,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended:1.5.0")
     
     // V2Ray Utilities (Conceptual - in real build you'd import the .aar or module)
     // implementation("com.github.2dust:AndroidLibV2rayLite:1.0.0") 
