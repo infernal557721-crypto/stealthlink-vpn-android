@@ -24,12 +24,14 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew || true
 
-    # Create wrapper if missing (since we generated project manually)
+    # Setup Gradle with specific version since we lack wrapper
     - name: Setup Gradle
       uses: gradle/gradle-build-action@v2
-      
+      with:
+        gradle-version: 8.5
+
     - name: Build with Gradle
-      run: gradle assembleDebug --stacktrace
+      run: gradle assembleDebug --stacktrace --no-daemon
 
     - name: Upload APK
       uses: actions/upload-artifact@v3
