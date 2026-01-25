@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.stealthlink.vpn"
+    namespace = "com.example.stealthlink"
     compileSdk = 34
 
     defaultConfig {
