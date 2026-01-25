@@ -22,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.stealthlink.ui.theme.*
+import android.content.Intent
+import android.os.Build
+import com.example.stealthlink.services.V2RayVpnService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -118,13 +121,104 @@ fun HomeScreen() {
             onClick = { 
                 if (connectionState == ConnectionState.DISCONNECTED) {
                     connectionState = ConnectionState.CONNECTING
-                    // Simulate connection delay
-                    scope.launch {
-                        delay(1000) // 1 second delay
-                        connectionState = ConnectionState.CONNECTED
+                    
+                    try {
+                         val config = """
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "81.200.154.49",
+            "port": 443,
+            "users": [
+              {
+                "id": "REPLACE_ME_WITH_REAL_UUID",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "fingerprint": "chrome",
+          "serverName": "www.google.com",
+          "publicKey": "REPLACE_ME_WITH_REAL_PUBKEY",
+          "shortId": "12345678",
+          "spiderX": "/"
+        }
+      },
+      "tag": "proxy"
+    },
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "ip": [
+          "geoip:private",
+          "geoip:cn"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "proxy",
+        "network": "tcp,udp"
+      }
+    ]
+  }
+}
+                         """.trimIndent()
+
+                        val intent = Intent(context, V2RayVpnService::class.java)
+                        intent.putExtra("V2RAY_CONFIG", config)
+                        
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                        
+                        scope.launch {
+                            delay(1000)
+                            connectionState = ConnectionState.CONNECTED
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        connectionState = ConnectionState.DISCONNECTED
+                        android.widget.Toast.makeText(context, "Ошибка запуска: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                     }
+
                 } else if (connectionState == ConnectionState.CONNECTED) {
                     connectionState = ConnectionState.DISCONNECTED
+                    val intent = Intent(context, V2RayVpnService::class.java)
+                    intent.action = "STOP"
+                    context.startService(intent)
                 }
             },
             modifier = Modifier.size(200.dp),
