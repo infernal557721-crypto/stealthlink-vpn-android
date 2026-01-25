@@ -70,8 +70,10 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
                 val fd = pfd?.fd ?: throw Exception("Failed to establish VPN")
                 Log.d(TAG, "VPN Interface established. FD: $fd")
 
-                // 2. Initialize Core Env
-                Libv2ray.initCoreEnv(filesDir.absolutePath, "asset_path")
+                // 2. Initialize Core Env and Assets
+                val assetPath = filesDir.absolutePath
+                copyAssets(assetPath)
+                Libv2ray.initCoreEnv(assetPath, "asset_path")
 
                 // 3. Create Controller
                 coreController = Libv2ray.newCoreController(this@V2RayVpnService)
@@ -82,6 +84,26 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start V2Ray", e)
                 stopVpn()
+            }
+        }
+    }
+
+
+    private fun copyAssets(targetDir: String) {
+        val assetsToCopy = listOf("geoip.dat", "geosite.dat")
+        assetsToCopy.forEach { filename ->
+            try {
+                val file = File(targetDir, filename)
+                if (!file.exists()) {
+                    Log.d(TAG, "Copying asset: $filename")
+                    assets.open(filename).use { input ->
+                        java.io.FileOutputStream(file).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy asset: $filename", e)
             }
         }
     }
