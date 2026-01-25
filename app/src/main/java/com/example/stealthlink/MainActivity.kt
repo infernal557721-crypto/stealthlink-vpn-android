@@ -94,7 +94,8 @@ fun HomeScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Vpn Code", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextWhite)
+        // Enlarge Title and make it GoldPrimary
+        Text("Vpn Code", fontSize = 36.sp, fontWeight = FontWeight.Black, color = GoldPrimary)
         Spacer(modifier = Modifier.height(8.dp))
         
         val statusText = when (connectionState) {
@@ -130,9 +131,9 @@ fun HomeScreen() {
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = when (connectionState) {
-                    ConnectionState.CONNECTED -> GreenSuccess
-                    ConnectionState.CONNECTING -> DarkGold
-                    else -> DarkGold
+                    ConnectionState.CONNECTED -> com.example.stealthlink.ui.theme.DarkGold // Stop button = Dark Gold
+                    ConnectionState.CONNECTING -> com.example.stealthlink.ui.theme.DarkGold
+                    else -> GoldPrimary // Start button = Bright Gold
                 }
             ),
             enabled = connectionState != ConnectionState.CONNECTING

@@ -13,9 +13,9 @@ class VpnRepository {
         } catch (e: Exception) {
             // Fallback to Mock Data (so the app works without a server)
             listOf(
-                Tariff("1_month", "1 Month", 189, false),
-                Tariff("3_months", "3 Months", 399, true),
-                Tariff("1_year", "1 Year", 1289, false)
+                Tariff("1_month", "1 Месяц", 100, false),
+                Tariff("3_months", "3 Месяца", 250, true),
+                Tariff("1_year", "1 Год", 800, false)
             )
         }
     }
