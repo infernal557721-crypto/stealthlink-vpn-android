@@ -1,8 +1,14 @@
 package com.example.stealthlink
 
+import android.app.Activity
+import android.content.Intent
+import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -17,14 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.stealthlink.ui.theme.*
-import android.content.Intent
-import android.os.Build
 import com.example.stealthlink.services.V2RayVpnService
+import com.example.stealthlink.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -33,19 +36,89 @@ enum class ConnectionState {
 }
 
 class MainActivity : ComponentActivity() {
+    
+    // Shared state for connection
+    private var connectionState = mutableStateOf(ConnectionState.DISCONNECTED)
+    private var pendingConfig: String? = null
+    
+    // VPN permission launcher
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Permission granted - start VPN
+            pendingConfig?.let { config ->
+                startVpnService(config)
+            }
+        } else {
+            // Permission denied
+            connectionState.value = ConnectionState.DISCONNECTED
+            Toast.makeText(this, "VPN permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             StealthLinkTheme {
-                MainScreen()
+                MainScreen(
+                    connectionState = connectionState.value,
+                    onConnect = { config -> requestVpnPermissionAndConnect(config) },
+                    onDisconnect = { stopVpnService() }
+                )
             }
         }
+    }
+    
+    private fun requestVpnPermissionAndConnect(config: String) {
+        connectionState.value = ConnectionState.CONNECTING
+        pendingConfig = config
+        
+        val prepareIntent = VpnService.prepare(this)
+        if (prepareIntent != null) {
+            // Permission needed - show system dialog
+            vpnPermissionLauncher.launch(prepareIntent)
+        } else {
+            // Already have permission
+            startVpnService(config)
+        }
+    }
+    
+    private fun startVpnService(config: String) {
+        try {
+            val intent = Intent(this, V2RayVpnService::class.java)
+            intent.putExtra("V2RAY_CONFIG", config)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            
+            // Update state after a short delay
+            connectionState.value = ConnectionState.CONNECTED
+        } catch (e: Exception) {
+            e.printStackTrace()
+            connectionState.value = ConnectionState.DISCONNECTED
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun stopVpnService() {
+        val intent = Intent(this, V2RayVpnService::class.java)
+        intent.action = "STOP"
+        startService(intent)
+        connectionState.value = ConnectionState.DISCONNECTED
     }
 }
 
 @Composable
-fun MainScreen() {
-    var selectedTab by remember { mutableStateOf(1) } // 0=Pay, 1=Home, 2=Settings
+fun MainScreen(
+    connectionState: ConnectionState,
+    onConnect: (String) -> Unit,
+    onDisconnect: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(1) }
 
     Scaffold(
         containerColor = DarkBackground,
@@ -83,7 +156,7 @@ fun MainScreen() {
         ) {
             when (selectedTab) {
                 0 -> SubscriptionScreen()
-                1 -> HomeScreen()
+                1 -> HomeScreen(connectionState, onConnect, onDisconnect)
                 2 -> Text("Настройки", color = Color.White)
             }
         }
@@ -91,13 +164,12 @@ fun MainScreen() {
 }
 
 @Composable
-fun HomeScreen() {
-    var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) } // DISCONNECTED, CONNECTING, CONNECTED
-    val scope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
-
+fun HomeScreen(
+    connectionState: ConnectionState,
+    onConnect: (String) -> Unit,
+    onDisconnect: () -> Unit
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // Enlarge Title and make it GoldPrimary
         Text("Vpn Code", fontSize = 36.sp, fontWeight = FontWeight.Black, color = GoldPrimary)
         Spacer(modifier = Modifier.height(8.dp))
         
@@ -120,10 +192,7 @@ fun HomeScreen() {
         Button(
             onClick = { 
                 if (connectionState == ConnectionState.DISCONNECTED) {
-                    connectionState = ConnectionState.CONNECTING
-                    
-                    try {
-                         val config = """
+                    val config = """
 {
   "log": {
     "loglevel": "warning"
@@ -185,41 +254,19 @@ fun HomeScreen() {
     ]
   }
 }
-                         """.trimIndent()
-
-                        val intent = Intent(context, V2RayVpnService::class.java)
-                        intent.putExtra("V2RAY_CONFIG", config)
-                        
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(intent)
-                        } else {
-                            context.startService(intent)
-                        }
-                        
-                        scope.launch {
-                            delay(1000)
-                            connectionState = ConnectionState.CONNECTED
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        connectionState = ConnectionState.DISCONNECTED
-                        android.widget.Toast.makeText(context, "Ошибка запуска: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                    }
-
+                    """.trimIndent()
+                    onConnect(config)
                 } else if (connectionState == ConnectionState.CONNECTED) {
-                    connectionState = ConnectionState.DISCONNECTED
-                    val intent = Intent(context, V2RayVpnService::class.java)
-                    intent.action = "STOP"
-                    context.startService(intent)
+                    onDisconnect()
                 }
             },
             modifier = Modifier.size(200.dp),
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = when (connectionState) {
-                    ConnectionState.CONNECTED -> com.example.stealthlink.ui.theme.DarkGold // Stop button = Dark Gold
-                    ConnectionState.CONNECTING -> com.example.stealthlink.ui.theme.DarkGold
-                    else -> GoldPrimary // Start button = Bright Gold
+                    ConnectionState.CONNECTED -> DarkGold
+                    ConnectionState.CONNECTING -> DarkGold
+                    else -> GoldPrimary
                 }
             ),
             enabled = connectionState != ConnectionState.CONNECTING
@@ -239,8 +286,9 @@ fun HomeScreen() {
         Spacer(modifier = Modifier.height(20.dp))
 
         // Trial Button
+        val context = androidx.compose.ui.platform.LocalContext.current
         TextButton(onClick = { 
-            android.widget.Toast.makeText(context, "Пробный период активирован!", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Пробный период активирован!", Toast.LENGTH_SHORT).show()
         }) {
            Text("Пробный период (24 ч)", color = GoldPrimary) 
         }
@@ -266,7 +314,6 @@ fun HomeScreen() {
 fun SubscriptionScreen() {
     val repository = remember { com.example.stealthlink.data.repository.VpnRepository() }
     var tariffs by remember { mutableStateOf<List<com.example.stealthlink.data.model.Tariff>>(emptyList()) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         tariffs = repository.getTariffs()
