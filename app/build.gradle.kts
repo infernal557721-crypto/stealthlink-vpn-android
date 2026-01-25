@@ -62,8 +62,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
-    // V2Ray/Xray Utilities
-    implementation("com.github.2dust:AndroidLibXrayLite:v26.1.23") 
+    // V2Ray Utilities
+    implementation("com.github.2dust:AndroidLibV2rayLite:1.1.5") 
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

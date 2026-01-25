@@ -1,11 +1,9 @@
-package com.example.stealthlink.services
 
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -14,15 +12,14 @@ import androidx.core.app.NotificationCompat
 import com.example.stealthlink.MainActivity
 import com.example.stealthlink.R
 import libv2ray.Libv2ray
-import libv2ray.CoreController
-import libv2ray.CoreCallbackHandler
+import libv2ray.V2RayPoint
+import libv2ray.V2RayVPNServiceSupportsSet
 import java.io.File
 import kotlinx.coroutines.*
 
-class V2RayVpnService : VpnService(), CoreCallbackHandler {
+class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
-    private var coreController: CoreController? = null
     private var pfd: ParcelFileDescriptor? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -34,7 +31,9 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
 
         val configContent = intent?.getStringExtra("V2RAY_CONFIG")
         if (configContent.isNullOrEmpty()) {
-            stopSelf()
+            // If already running (from UI toggle), ignore? 
+            // Or stop if no config?
+            if (!isRunning) stopSelf()
             return START_NOT_STICKY
         }
 
@@ -49,42 +48,29 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
 
         scope.launch {
             try {
-                // 1. Establish VPN interface (TUN)
-                // We must do this on the main thread or ensure builder usage is correct, 
-                // but usually builder.establish() is blocking is fine.
-                // We need to parse routes/DNS from config or hardcode for now.
-                if (pfd == null) {
-                    val builder = Builder()
-                    builder.setSession("VpnCode")
-                    builder.setMtu(1500)
-                    builder.addAddress("10.0.1.10", 24)
-                    builder.addRoute("0.0.0.0", 0)
-                    builder.addDnsServer("8.8.8.8")
-                    builder.addDnsServer("1.1.1.1")
-                    
-                    // Allow the app to bypass VPN to reach the proxy server itself?
-                    // V2Ray protects its own socket (fwmark), but we might need 
-                    // builder.addDisallowedApplication(packageName) if V2Ray doesn't protect properly.
-                    // Usually core.Dialer protects its socket.
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                         builder.setMetered(false)
-                    }
-                    
-                    pfd = builder.establish()
+                Log.d(TAG, "Starting V2Ray init...")
+                
+                // 1. Write config to file
+                val configFile = File(filesDir, "config.json")
+                configFile.writeText(config)
+
+                // 2. Set strict V2RayPoint reference for callback
+                V2RayPoint.setV2RayVPNServiceSupportsSet(this@V2RayVpnService)
+
+                // 3. Start V2Ray
+                // The library calls 'setup(params)' internally when it needs the TUN interface.
+                // We just need to trigger the start.
+                val result = Libv2ray.startV2Ray(
+                    filesDir.absolutePath, 
+                    "config.json", 
+                    "assets" // 'assets' is a dummy path if we don't use geoip/site
+                )
+                 
+                if (!result.isNullOrEmpty()) { 
+                   Log.d(TAG, "V2Ray start result/pid: $result")
+                } else {
+                   Log.e(TAG, "V2Ray start returned empty string (failure?)")
                 }
-
-                val fd = pfd?.fd ?: throw Exception("Failed to establish VPN")
-
-                // 2. Initialize Core Env
-                Libv2ray.initCoreEnv(filesDir.absolutePath, "asset_path")
-
-                // 3. Create Controller
-                coreController = Libv2ray.newCoreController(this@V2RayVpnService)
-
-                // 4. Start Loop with Config AND FD
-                // Note: tunFd is int (int32 in Go), passing local fd
-                Log.d(TAG, "Starting Xray Core with FD: $fd")
-                coreController?.startLoop(config, fd)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start V2Ray", e)
@@ -96,9 +82,9 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
     private fun stopVpn() {
         isRunning = false
         try {
-            coreController?.stopLoop()
+            Libv2ray.stopV2Ray()
         } catch (e: Exception) {
-            Log.e(TAG, "Error stopping core", e)
+            Log.e(TAG, "Error stopping Libv2ray", e)
         }
         
         try {
@@ -117,32 +103,53 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
         stopVpn()
         scope.cancel()
     }
-    
-    // CoreCallbackHandler implementation
-    // Go int -> Java long? Assuming long based on common gomobile output for 64-bit target
-    override fun startup(): Long {
-        Log.d(TAG, "Core Startup Callback")
-        return 0
-    }
 
-    override fun shutdown(): Long {
-        Log.d(TAG, "Core Shutdown Callback")
-        return 0
+    /**
+     * Callback from Go Native Lib to establish VPN interface.
+     * Expects 'fd' (int) as return value.
+     */
+    override fun setup(parameters: String): Long {
+        Log.d(TAG, "Native setup() requested. Params: $parameters")
+        
+        try {
+            if (pfd != null) {
+                pfd?.close()
+                pfd = null
+            }
+            
+            val builder = Builder()
+            builder.setSession("StealthLink VPN")
+            builder.setMtu(1500)
+            builder.addAddress("10.0.1.10", 24)
+            builder.addRoute("0.0.0.0", 0)
+            builder.addDnsServer("8.8.8.8")
+            builder.addDnsServer("1.1.1.1")
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                 builder.setMetered(false)
+            }
+            
+            pfd = builder.establish()
+            val fd = pfd?.fd ?: 0
+            Log.d(TAG, "VPN Interface established. FD: $fd")
+            
+            // Go 'int' on 64-bit is 64-bit, so returning Long is correct for 'int' return type in Java/Kotlin 
+            // representing Go 'int'.
+            return fd.toLong()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "VPN Setup failed", e)
+            return 0
+        }
     }
-
-    override fun onEmitStatus(code: Long, msg: String?): Long {
-        Log.d(TAG, "Core Status [$code]: $msg")
-        return 0
-    }
-
-    // Unnecessary methods from old implementation removed (setup)
 
     private fun createNotification(): Notification {
         val channelId = "vpn_service_channel"
         val channelName = "VPN Service"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -151,10 +158,11 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
         )
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Vpn Code")
-            .setContentText("VPN Connected")
+            .setContentTitle("StealthLink")
+            .setContentText("VPN Connected via V2Ray")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
+            .setOngoing(true)
             .build()
     }
 
