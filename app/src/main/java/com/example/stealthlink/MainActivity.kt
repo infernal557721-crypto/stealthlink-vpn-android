@@ -126,15 +126,29 @@ fun HomeScreen() {
 
 @Composable
 fun SubscriptionScreen() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+    val repository = remember { com.example.stealthlink.data.repository.VpnRepository() }
+    var tariffs by remember { mutableStateOf<List<com.example.stealthlink.data.model.Tariff>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        tariffs = repository.getTariffs()
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally, 
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Text("PREMIUM", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         
-        TariffCard("1 Month", "189 ₽/mo", false)
-        Spacer(modifier = Modifier.height(8.dp))
-        TariffCard("3 Months", "399 ₽", true) // Hit
-        Spacer(modifier = Modifier.height(8.dp))
-        TariffCard("1 Year", "1289 ₽", false) // Profitable
+        if (tariffs.isEmpty()) {
+            CircularProgressIndicator(color = GoldPrimary)
+        } else {
+            tariffs.forEach { tariff ->
+                TariffCard(tariff.name, "${tariff.price} ₽", tariff.isHit)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
         
         Spacer(modifier = Modifier.height(24.dp))
         

@@ -57,6 +57,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended:1.5.0")
     
+    // Networking
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
+    
     // V2Ray Utilities (Conceptual - in real build you'd import the .aar or module)
     // implementation("com.github.2dust:AndroidLibV2rayLite:1.0.0") 
     
