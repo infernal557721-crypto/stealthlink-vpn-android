@@ -148,7 +148,7 @@ fun HomeScreen() {
             "port": 443,
             "users": [
               {
-                "id": "REPLACE_ME_WITH_REAL_UUID",
+                "id": "ffb23eb7-669a-43c2-95fc-902b6c6b9c95",
                 "encryption": "none",
                 "flow": "xtls-rprx-vision"
               }
@@ -162,7 +162,7 @@ fun HomeScreen() {
         "realitySettings": {
           "fingerprint": "chrome",
           "serverName": "www.google.com",
-          "publicKey": "REPLACE_ME_WITH_REAL_PUBKEY",
+          "publicKey": "t1mvlx-GfAiYPNoDbNzsBH0nA-EtUyDJKTGM-eavS3k",
           "shortId": "12345678",
           "spiderX": "/"
         }
