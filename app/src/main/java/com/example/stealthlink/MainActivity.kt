@@ -22,6 +22,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.stealthlink.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+enum class ConnectionState {
+    DISCONNECTED, CONNECTING, CONNECTED
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,34 +89,72 @@ fun MainScreen() {
 
 @Composable
 fun HomeScreen() {
-    var isConnected by remember { mutableStateOf(false) }
+    var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) } // DISCONNECTED, CONNECTING, CONNECTED
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Vpn Code", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextWhite)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(if (isConnected) "ПОДКЛЮЧЕНО" else "ОТКЛЮЧЕНО", color = TextGray)
+        
+        val statusText = when (connectionState) {
+            ConnectionState.DISCONNECTED -> "ОТКЛЮЧЕНО"
+            ConnectionState.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
+            ConnectionState.CONNECTED -> "ПОДКЛЮЧЕНО"
+        }
+        val statusColor = when (connectionState) {
+            ConnectionState.DISCONNECTED -> TextGray
+            ConnectionState.CONNECTING -> GoldPrimary
+            ConnectionState.CONNECTED -> GreenSuccess
+        }
+        
+        Text(statusText, color = statusColor)
         
         Spacer(modifier = Modifier.height(30.dp))
         
         // Power Button
         Button(
-            onClick = { isConnected = !isConnected },
+            onClick = { 
+                if (connectionState == ConnectionState.DISCONNECTED) {
+                    connectionState = ConnectionState.CONNECTING
+                    // Simulate connection delay
+                    scope.launch {
+                        delay(2000) // 2 seconds delay
+                        connectionState = ConnectionState.CONNECTED
+                    }
+                } else if (connectionState == ConnectionState.CONNECTED) {
+                    connectionState = ConnectionState.DISCONNECTED
+                }
+            },
             modifier = Modifier.size(200.dp),
             shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = if (isConnected) GreenSuccess else DarkGold)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = when (connectionState) {
+                    ConnectionState.CONNECTED -> GreenSuccess
+                    ConnectionState.CONNECTING -> DarkGold
+                    else -> DarkGold
+                }
+            ),
+            enabled = connectionState != ConnectionState.CONNECTING
         ) {
-            Text(
-                if (isConnected) "СТОП" else "СТАРТ",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = DarkBackground
-            )
+            if (connectionState == ConnectionState.CONNECTING) {
+                CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(48.dp))
+            } else {
+                Text(
+                    if (connectionState == ConnectionState.CONNECTED) "СТОП" else "СТАРТ",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DarkBackground
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
         // Trial Button
-        TextButton(onClick = { isConnected = true }) {
+        TextButton(onClick = { 
+            android.widget.Toast.makeText(context, "Пробный период активирован!", android.widget.Toast.LENGTH_SHORT).show()
+        }) {
            Text("Пробный период (24 ч)", color = GoldPrimary) 
         }
 
