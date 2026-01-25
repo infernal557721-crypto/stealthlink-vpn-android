@@ -63,7 +63,7 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
     // V2Ray/Xray Utilities
-    implementation("com.github.2dust:AndroidLibXrayLite:1.0.0") 
+    implementation("com.github.2dust:AndroidLibXrayLite:v26.1.23") 
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

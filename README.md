@@ -1,4 +1,7 @@
 # StealthLink VPN (Android)
+![Build Status](https://github.com/infernal557721-crypto/stealthlink-vpn-android/actions/workflows/android.yml/badge.svg)
+
+Advanced V2Ray VPN Client (Xray-Core / VLESS / Reality).
 
 **StealthLink** is a next-generation VPN client built for speed and privacy.
 
