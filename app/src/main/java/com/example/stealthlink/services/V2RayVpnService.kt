@@ -73,7 +73,7 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
                 // 2. Initialize Core Env and Assets
                 val assetPath = filesDir.absolutePath
                 copyAssets(assetPath)
-                Libv2ray.initCoreEnv(assetPath, "asset_path")
+                Libv2ray.initCoreEnv(assetPath, "")
 
                 // 3. Create Controller
                 coreController = Libv2ray.newCoreController(this@V2RayVpnService)

@@ -179,14 +179,6 @@ fun HomeScreen() {
     "rules": [
       {
         "type": "field",
-        "outboundTag": "direct",
-        "ip": [
-          "geoip:private",
-          "geoip:cn"
-        ]
-      },
-      {
-        "type": "field",
         "outboundTag": "proxy",
         "network": "tcp,udp"
       }
