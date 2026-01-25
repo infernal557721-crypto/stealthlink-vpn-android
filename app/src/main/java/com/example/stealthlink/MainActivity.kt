@@ -120,7 +120,7 @@ fun HomeScreen() {
                     connectionState = ConnectionState.CONNECTING
                     // Simulate connection delay
                     scope.launch {
-                        delay(2000) // 2 seconds delay
+                        delay(1000) // 1 second delay
                         connectionState = ConnectionState.CONNECTED
                     }
                 } else if (connectionState == ConnectionState.CONNECTED) {
