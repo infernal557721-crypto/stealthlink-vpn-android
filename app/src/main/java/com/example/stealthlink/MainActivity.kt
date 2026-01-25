@@ -43,19 +43,19 @@ fun MainScreen() {
         bottomBar = {
             NavigationBar(containerColor = DarkSurface) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Pay") },
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Оплата") },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Главная") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
@@ -75,7 +75,7 @@ fun MainScreen() {
             when (selectedTab) {
                 0 -> SubscriptionScreen()
                 1 -> HomeScreen()
-                2 -> Text("Settings", color = Color.White)
+                2 -> Text("Настройки", color = Color.White)
             }
         }
     }
@@ -86,28 +86,35 @@ fun HomeScreen() {
     var isConnected by remember { mutableStateOf(false) }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("StealthLink VPN", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextWhite)
+        Text("Vpn Code", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextWhite)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(if (isConnected) "CONNECTED" else "DISCONNECTED", color = TextGray)
+        Text(if (isConnected) "ПОДКЛЮЧЕНО" else "ОТКЛЮЧЕНО", color = TextGray)
         
-        Spacer(modifier = Modifier.height(60.dp))
+        Spacer(modifier = Modifier.height(30.dp))
         
         // Power Button
         Button(
             onClick = { isConnected = !isConnected },
             modifier = Modifier.size(200.dp),
             shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = if (isConnected) GoldPrimary else RedStop)
+            colors = ButtonDefaults.buttonColors(containerColor = if (isConnected) GreenSuccess else DarkGold)
         ) {
             Text(
-                if (isConnected) "STOP" else "START",
+                if (isConnected) "СТОП" else "СТАРТ",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isConnected) DarkBackground else TextWhite
+                color = DarkBackground
             )
         }
 
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Trial Button
+        TextButton(onClick = { isConnected = true }) {
+           Text("Пробный период (24 ч)", color = GoldPrimary) 
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         // Split Tunneling Toggle
         Row(
@@ -118,7 +125,7 @@ fun HomeScreen() {
                 .background(DarkSurface)
                 .padding(16.dp)
         ) {
-            Text("Only for Social Networks", color = TextWhite, modifier = Modifier.weight(1f))
+            Text("Только соцсети", color = TextWhite, modifier = Modifier.weight(1f))
             Switch(checked = false, onCheckedChange = {})
         }
     }
@@ -138,7 +145,7 @@ fun SubscriptionScreen() {
         horizontalAlignment = Alignment.CenterHorizontally, 
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text("PREMIUM", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
+        Text("ПРЕМИУМ", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         
         if (tariffs.isEmpty()) {
@@ -157,7 +164,7 @@ fun SubscriptionScreen() {
             modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
         ) {
-            Text("Continue", color = DarkBackground, fontWeight = FontWeight.Bold)
+            Text("Продолжить", color = DarkBackground, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -177,7 +184,7 @@ fun TariffCard(duration: String, price: String, isHit: Boolean) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(duration, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 if (isHit) {
-                    Text("HIT SALES", color = GoldPrimary, fontSize = 12.sp)
+                    Text("ХИТ ПРОДАЖ", color = GoldPrimary, fontSize = 12.sp)
                 }
             }
             Text(price, color = TextWhite, fontSize = 18.sp)
