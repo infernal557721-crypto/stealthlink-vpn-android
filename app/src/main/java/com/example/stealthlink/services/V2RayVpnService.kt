@@ -14,14 +14,16 @@ import androidx.core.app.NotificationCompat
 import com.example.stealthlink.MainActivity
 import com.example.stealthlink.R
 import libv2ray.Libv2ray
-import libv2ray.V2RayPoint
-import libv2ray.V2RayVPNServiceSupportsSet
+import libv2ray.CoreController
+import libv2ray.CoreCallbackHandler
 import java.io.File
 import kotlinx.coroutines.*
 
-class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
+class V2RayVpnService : VpnService(), CoreCallbackHandler {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var isRunning = false
+    private var coreController: CoreController? = null
+    private var pfd: ParcelFileDescriptor? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val command = intent?.action
@@ -47,32 +49,43 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
 
         scope.launch {
             try {
-                // Initialize V2RayPoint
-                V2RayPoint.setV2RayVPNServiceSupportsSet(this@V2RayVpnService)
-                
-                // Write config to file
-                val configFile = File(filesDir, "config.json")
-                configFile.writeText(config)
-
-                // Start V2Ray
-                // Note: LibV2Ray API might differ slightly depending on version, 
-                // but usually involves configuring the environment and running the core.
-                // For this 'Lite' lib, we often use V2RayPoint or direct Libv2ray calls.
-                // Assuming standard Libv2ray usage for 'Lite' wrapper:
-                
-                val result = Libv2ray.startV2Ray(
-                    filesDir.absolutePath, 
-                    "config.json", 
-                    "asserts" // asset dir, often empty for fresh install
-                )
-                 
-                if (result != "") { 
-                   // empty string usually means success or PID in some versions, 
-                   // but let's assume it returns error message if failed.
-                   Log.e(TAG, "V2Ray start result: $result")
+                // 1. Establish VPN interface (TUN)
+                // We must do this on the main thread or ensure builder usage is correct, 
+                // but usually builder.establish() is blocking is fine.
+                // We need to parse routes/DNS from config or hardcode for now.
+                if (pfd == null) {
+                    val builder = Builder()
+                    builder.setSession("VpnCode")
+                    builder.setMtu(1500)
+                    builder.addAddress("10.0.1.10", 24)
+                    builder.addRoute("0.0.0.0", 0)
+                    builder.addDnsServer("8.8.8.8")
+                    builder.addDnsServer("1.1.1.1")
+                    
+                    // Allow the app to bypass VPN to reach the proxy server itself?
+                    // V2Ray protects its own socket (fwmark), but we might need 
+                    // builder.addDisallowedApplication(packageName) if V2Ray doesn't protect properly.
+                    // Usually core.Dialer protects its socket.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                         builder.setMetered(false)
+                    }
+                    
+                    pfd = builder.establish()
                 }
 
-                Log.d(TAG, "V2Ray started")
+                val fd = pfd?.fd ?: throw Exception("Failed to establish VPN")
+
+                // 2. Initialize Core Env
+                Libv2ray.initCoreEnv(filesDir.absolutePath, "asset_path")
+
+                // 3. Create Controller
+                coreController = Libv2ray.newCoreController(this@V2RayVpnService)
+
+                // 4. Start Loop with Config AND FD
+                // Note: tunFd is int (int32 in Go), passing local fd
+                Log.d(TAG, "Starting Xray Core with FD: $fd")
+                coreController?.startLoop(config, fd)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start V2Ray", e)
                 stopVpn()
@@ -82,7 +95,19 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
 
     private fun stopVpn() {
         isRunning = false
-        Libv2ray.stopV2Ray()
+        try {
+            coreController?.stopLoop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping core", e)
+        }
+        
+        try {
+           pfd?.close()
+           pfd = null
+        } catch (e: Exception) { 
+           Log.e(TAG, "Error closing fd", e)
+        }
+        
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -92,40 +117,25 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         stopVpn()
         scope.cancel()
     }
-
-    override fun setup(parameters: String): Int {
-        // Callback from V2Ray core to establish the VPN tunnel
-        // parameters is usually "mtu,address,prefix_length,dns,route..."
-        Log.d(TAG, "Setup called with: $parameters")
-        
-        try {
-            val builder = Builder()
-            
-            // Simple parsing of typical parameters string 
-            // Or just set defaults if we want to be safe for now
-            // But LibV2Ray typically expects us to parse 'parameters'
-            
-            // Example format: "10.0.0.2, 1200, 26, 8.8.8.8, ..."
-            val parts = parameters.split(",")
-            if (parts.isNotEmpty()) {
-                // This is a naive implementation; in reality we parse carefully
-                // But for now, let's setup a standard verified config
-                 builder.setMtu(1500)
-                 builder.addAddress("10.0.1.10", 24)
-                 builder.addRoute("0.0.0.0", 0)
-                 builder.addDnsServer("8.8.8.8")
-                 builder.addDnsServer("1.1.1.1")
-            }
-
-            pfd = builder.establish()
-            return pfd?.fd ?: 0
-        } catch (e: Exception) {
-            Log.e(TAG, "VPN Setup failed", e)
-            return 0
-        }
+    
+    // CoreCallbackHandler implementation
+    // Go int -> Java long? Assuming long based on common gomobile output for 64-bit target
+    override fun startup(): Long {
+        Log.d(TAG, "Core Startup Callback")
+        return 0
     }
 
-    private var pfd: ParcelFileDescriptor? = null
+    override fun shutdown(): Long {
+        Log.d(TAG, "Core Shutdown Callback")
+        return 0
+    }
+
+    override fun onEmitStatus(code: Long, msg: String?): Long {
+        Log.d(TAG, "Core Status [$code]: $msg")
+        return 0
+    }
+
+    // Unnecessary methods from old implementation removed (setup)
 
     private fun createNotification(): Notification {
         val channelId = "vpn_service_channel"
