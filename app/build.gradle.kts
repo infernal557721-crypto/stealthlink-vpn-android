@@ -70,7 +70,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
-    // V2Ray Utilities (Local AAR)
+    // tun2socks - Routes TUN traffic to SOCKS proxy
+    implementation("com.ooimi.library:tun2socks:1.0.4")
  
     
     testImplementation("junit:junit:4.13.2")
