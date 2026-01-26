@@ -19,13 +19,23 @@ import java.io.File
 import kotlinx.coroutines.*
 
 class V2RayVpnService : VpnService(), CoreCallbackHandler {
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
     private var coreController: CoreController? = null
     private var pfd: ParcelFileDescriptor? = null
 
+    companion object {
+        private const val TAG = "V2RayVpnService"
+        private const val NOTIFICATION_ID = 1
+        private const val VPN_MTU = 1500
+        private const val PRIVATE_VLAN4_CLIENT = "10.0.0.1"
+        private const val PRIVATE_VLAN4_ROUTER = "10.0.0.2"
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val command = intent?.action
+        Log.d(TAG, "onStartCommand: action=$command")
+        
         if (command == "STOP") {
             stopVpn()
             return START_NOT_STICKY
@@ -33,6 +43,7 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
 
         val configContent = intent?.getStringExtra("V2RAY_CONFIG")
         if (configContent.isNullOrEmpty()) {
+            Log.e(TAG, "No config provided")
             if (!isRunning) stopSelf()
             return START_NOT_STICKY
         }
@@ -43,51 +54,84 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
     }
 
     private fun startVpn(config: String) {
-        if (isRunning) return
+        if (isRunning) {
+            Log.w(TAG, "VPN already running")
+            return
+        }
         isRunning = true
 
         scope.launch {
             try {
-                Log.d(TAG, "Starting V2Ray init...")
+                Log.d(TAG, "=== Starting VPN ===")
                 
-                // 1. Establish VPN interface (TUN)
-                if (pfd == null) {
-                    val builder = Builder()
-                    builder.setSession("StealthLink VPN")
-                    builder.setMtu(1500)
-                    builder.addAddress("10.0.1.10", 24)
-                    builder.addRoute("0.0.0.0", 0)
-                    builder.addDnsServer("8.8.8.8")
-                    builder.addDnsServer("1.1.1.1")
-                    
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                         builder.setMetered(false)
-                    }
-                    
-                    pfd = builder.establish()
-                }
-
-                val fd = pfd?.fd ?: throw Exception("Failed to establish VPN")
-                Log.d(TAG, "VPN Interface established. FD: $fd")
-
-                // 2. Initialize Core Env and Assets
+                // 1. Copy assets first
                 val assetPath = filesDir.absolutePath
                 copyAssets(assetPath)
+                Log.d(TAG, "Assets copied to: $assetPath")
+                
+                // 2. Initialize Xray environment
                 Libv2ray.initCoreEnv(assetPath, "")
+                Log.d(TAG, "Xray environment initialized")
 
-                // 3. Create Controller
+                // 3. Establish VPN TUN interface
+                val fd = establishVpn()
+                Log.d(TAG, "VPN TUN established with FD: $fd")
+
+                // 4. Create core controller with callback handler
                 coreController = Libv2ray.newCoreController(this@V2RayVpnService)
+                Log.d(TAG, "Core controller created")
 
-                // 4. Start Loop with Config AND FD
+                // 5. Start the Xray core with config and TUN fd
+                Log.d(TAG, "Starting Xray core with TUN fd=$fd")
+                Log.d(TAG, "Config: ${config.take(200)}...")
                 coreController?.startLoop(config, fd)
+                Log.d(TAG, "=== Xray core started successfully ===")
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start V2Ray", e)
-                stopVpn()
+                Log.e(TAG, "Failed to start VPN", e)
+                withContext(Dispatchers.Main) {
+                    stopVpn()
+                }
             }
         }
     }
 
+    private fun establishVpn(): Int {
+        val builder = Builder()
+        
+        // Basic TUN configuration
+        builder.setSession("StealthLink VPN")
+        builder.setMtu(VPN_MTU)
+        
+        // IPv4 configuration
+        builder.addAddress(PRIVATE_VLAN4_CLIENT, 30)
+        
+        // Route ALL traffic through VPN
+        builder.addRoute("0.0.0.0", 0)
+        
+        // DNS servers
+        builder.addDnsServer("8.8.8.8")
+        builder.addDnsServer("1.1.1.1")
+        builder.addDnsServer("8.8.4.4")
+        
+        // CRITICAL: Exclude our own app to prevent routing loop!
+        try {
+            builder.addDisallowedApplication(packageName)
+            Log.d(TAG, "Excluded app from VPN: $packageName")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to exclude app", e)
+        }
+        
+        // Android Q+ settings
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+        
+        // Establish the TUN interface
+        pfd = builder.establish() ?: throw Exception("Failed to establish VPN - check permissions")
+        
+        return pfd!!.fd
+    }
 
     private fun copyAssets(targetDir: String) {
         val assetsToCopy = listOf("geoip.dat", "geosite.dat")
@@ -101,6 +145,9 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
                             input.copyTo(output)
                         }
                     }
+                    Log.d(TAG, "Copied $filename (${file.length()} bytes)")
+                } else {
+                    Log.d(TAG, "Asset already exists: $filename (${file.length()} bytes)")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to copy asset: $filename", e)
@@ -109,18 +156,23 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
     }
 
     private fun stopVpn() {
+        Log.d(TAG, "=== Stopping VPN ===")
         isRunning = false
+        
         try {
             coreController?.stopLoop()
+            coreController = null
+            Log.d(TAG, "Core stopped")
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping core", e)
         }
         
         try {
-           pfd?.close()
-           pfd = null
-        } catch (e: Exception) { 
-           Log.e(TAG, "Error closing fd", e)
+            pfd?.close()
+            pfd = null
+            Log.d(TAG, "TUN closed")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing TUN", e)
         }
         
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -129,32 +181,40 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "onDestroy called")
         stopVpn()
         scope.cancel()
     }
 
-    // CoreCallbackHandler Implementation for V5+
-    
+    override fun onRevoke() {
+        super.onRevoke()
+        Log.d(TAG, "VPN permission revoked")
+        stopVpn()
+    }
+
+    // CoreCallbackHandler Implementation
     override fun startup(): Long {
-        Log.d(TAG, "Core Startup")
+        Log.d(TAG, ">>> Xray Core Startup callback")
         return 0
     }
 
     override fun shutdown(): Long {
-        Log.d(TAG, "Core Shutdown")
+        Log.d(TAG, ">>> Xray Core Shutdown callback")
         return 0
     }
 
     override fun onEmitStatus(code: Long, msg: String?): Long {
-        Log.d(TAG, "Core Status [$code]: $msg")
+        Log.d(TAG, ">>> Xray Status [$code]: $msg")
         return 0
     }
     
     private fun createNotification(): Notification {
         val channelId = "vpn_service_channel"
         val channelName = "VPN Service"
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+            channel.description = "StealthLink VPN Service"
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
@@ -165,16 +225,11 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
         )
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("StealthLink")
-            .setContentText("VPN Connected")
+            .setContentTitle("StealthLink VPN")
+            .setContentText("VPN подключен")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
-    }
-    
-    companion object {
-        private const val TAG = "V2RayVpnService"
-        private const val NOTIFICATION_ID = 1
     }
 }

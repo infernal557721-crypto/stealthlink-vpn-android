@@ -200,39 +200,10 @@ fun HomeScreen(
   "dns": {
     "servers": [
       "8.8.8.8",
-      "1.1.1.1"
+      "1.1.1.1",
+      "localhost"
     ]
   },
-  "inbounds": [
-    {
-      "tag": "socks",
-      "port": 10808,
-      "listen": "127.0.0.1",
-      "protocol": "socks",
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls"]
-      },
-      "settings": {
-        "auth": "noauth",
-        "udp": true
-      }
-    },
-    {
-      "tag": "transparent",
-      "port": 12345,
-      "listen": "127.0.0.1",
-      "protocol": "dokodemo-door",
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls"]
-      },
-      "settings": {
-        "network": "tcp,udp",
-        "followRedirect": true
-      }
-    }
-  ],
   "outbounds": [
     {
       "protocol": "vless",
@@ -266,27 +237,22 @@ fun HomeScreen(
     },
     {
       "protocol": "freedom",
+      "settings": {},
       "tag": "direct"
     },
     {
-      "protocol": "dns",
-      "tag": "dns-out"
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "block"
     }
   ],
   "routing": {
-    "domainStrategy": "IPIfNonMatch",
+    "domainStrategy": "AsIs",
     "rules": [
       {
         "type": "field",
-        "inboundTag": ["transparent", "socks"],
-        "port": 53,
-        "outboundTag": "dns-out"
-      },
-      {
-        "type": "field",
-        "inboundTag": ["transparent", "socks"],
-        "outboundTag": "proxy",
-        "network": "tcp,udp"
+        "ip": ["geoip:private"],
+        "outboundTag": "direct"
       }
     ]
   }
