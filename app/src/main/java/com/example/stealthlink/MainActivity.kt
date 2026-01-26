@@ -200,10 +200,25 @@ fun HomeScreen(
   "dns": {
     "servers": [
       "8.8.8.8",
-      "1.1.1.1",
-      "localhost"
+      "1.1.1.1"
     ]
   },
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
   "outbounds": [
     {
       "protocol": "vless",
@@ -239,11 +254,6 @@ fun HomeScreen(
       "protocol": "freedom",
       "settings": {},
       "tag": "direct"
-    },
-    {
-      "protocol": "blackhole",
-      "settings": {},
-      "tag": "block"
     }
   ],
   "routing": {
