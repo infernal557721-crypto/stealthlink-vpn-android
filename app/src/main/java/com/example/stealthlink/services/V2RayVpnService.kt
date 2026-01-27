@@ -14,21 +14,21 @@ import com.example.stealthlink.MainActivity
 import com.example.stealthlink.R
 import go.Seq
 import libv2ray.Libv2ray
-import libv2ray.V2RayPoint
-import libv2ray.V2RayVPNServiceSupportsSet
+import libv2ray.CoreController
+import libv2ray.CoreCallbackHandler
 import java.io.File
 import kotlinx.coroutines.*
 
 /**
- * VPN Service that uses Xray core (via AndroidLibXrayLite) for VLESS-Reality proxy.
+ * VPN Service that uses Xray core (via libv2ray) for VLESS-Reality proxy.
  * 
  * Architecture:
  * [Device Traffic] -> [TUN Interface] -> [Xray Core] -> [VPS Server]
  */
-class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
+class V2RayVpnService : VpnService(), CoreCallbackHandler {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
-    private var v2rayPoint: V2RayPoint? = null
+    private var coreController: CoreController? = null
     private var pfd: ParcelFileDescriptor? = null
 
     companion object {
@@ -77,20 +77,22 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
                 val assetPath = filesDir.absolutePath
                 copyAssets(assetPath)
                 
-                // Initialize Seq (Go runtime)
+                // Initialize Go/Seq runtime
                 Seq.setContext(applicationContext)
                 
+                // Initialize Xray core environment
+                Libv2ray.initCoreEnv(assetPath, "")
                 Log.d(TAG, "Xray environment initialized at: $assetPath")
 
-                // 2. Create V2RayPoint
-                v2rayPoint = Libv2ray.newV2RayPoint(this@V2RayVpnService, false)
+                // 2. Establish VPN TUN interface first
+                val tunFd = establishTun()
+                Log.d(TAG, "TUN interface established with FD: $tunFd")
+
+                // 3. Create CoreController and start Xray with TUN fd
+                coreController = Libv2ray.newCoreController(this@V2RayVpnService)
                 
-                // 3. Configure and start Xray
-                v2rayPoint?.configureFileContent = config
-                v2rayPoint?.domainName = extractDomainFromConfig(config)
-                
-                Log.d(TAG, "Starting Xray core...")
-                v2rayPoint?.runLoop(true)
+                // Start the Xray core with config and TUN file descriptor
+                coreController?.startLoop(config, tunFd.toLong())
                 
                 Log.d(TAG, "=== VPN fully connected ===")
 
@@ -103,18 +105,35 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         }
     }
     
-    private fun extractDomainFromConfig(config: String): String {
-        // Try to extract domain from outbound config
+    private fun establishTun(): Int {
+        val builder = Builder()
+        
+        builder.setSession("StealthLink VPN")
+        builder.setMtu(VPN_MTU)
+        builder.addAddress(TUN_IP, TUN_PREFIX)
+        builder.addRoute("0.0.0.0", 0)  // Route all IPv4 traffic
+        builder.addDnsServer(DNS_PRIMARY)
+        builder.addDnsServer(DNS_SECONDARY)
+        
+        // Exclude our own app to prevent routing loop
         try {
-            val regex = """"address"\s*:\s*"([^"]+)"""".toRegex()
-            val match = regex.find(config)
-            return match?.groupValues?.get(1) ?: "v2ray.local"
+            builder.addDisallowedApplication(packageName)
+            Log.d(TAG, "Excluded app from VPN: $packageName")
         } catch (e: Exception) {
-            return "v2ray.local"
+            Log.e(TAG, "Failed to exclude app", e)
         }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+        
+        pfd = builder.establish() ?: throw Exception("Failed to establish VPN")
+        return pfd!!.fd
     }
 
     private fun copyAssets(targetDir: String) {
+        // geoip.dat and geosite.dat are already in the AAR assets
+        // They will be automatically available from the AAR
         val assetsToCopy = listOf("geoip.dat", "geosite.dat")
         assetsToCopy.forEach { filename ->
             try {
@@ -128,75 +147,26 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy asset: $filename", e)
+                // Assets might be in the AAR already
+                Log.w(TAG, "Asset $filename not found in app assets, using AAR assets")
             }
         }
     }
 
-    // V2RayVPNServiceSupportsSet implementation
-    override fun setup(parameters: String): Long {
-        Log.d(TAG, ">>> setup() called with parameters length: ${parameters.length}")
-        
-        try {
-            // Establish VPN tunnel
-            val builder = Builder()
-            
-            builder.setSession("StealthLink VPN")
-            builder.setMtu(VPN_MTU)
-            builder.addAddress(TUN_IP, TUN_PREFIX)
-            builder.addRoute("0.0.0.0", 0)  // Route all IPv4 traffic
-            builder.addDnsServer(DNS_PRIMARY)
-            builder.addDnsServer(DNS_SECONDARY)
-            
-            // Exclude our own app to prevent routing loop
-            try {
-                builder.addDisallowedApplication(packageName)
-                Log.d(TAG, "Excluded app from VPN: $packageName")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to exclude app", e)
-            }
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setMetered(false)
-            }
-            
-            pfd = builder.establish()
-            if (pfd != null) {
-                Log.d(TAG, "VPN established with FD: ${pfd!!.fd}")
-                return pfd!!.fd.toLong()
-            } else {
-                Log.e(TAG, "Failed to establish VPN")
-                return -1
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in setup()", e)
-            return -1
-        }
-    }
-    
-    override fun prepare(): Long {
-        Log.d(TAG, ">>> prepare() called")
+    // CoreCallbackHandler implementation
+    override fun startup(): Long {
+        Log.d(TAG, ">>> Xray Core Startup callback")
         return 0
     }
     
     override fun shutdown(): Long {
-        Log.d(TAG, ">>> shutdown() called")
+        Log.d(TAG, ">>> Xray Core Shutdown callback")
         return 0
     }
     
-    override fun protect(fd: Long): Boolean {
-        Log.d(TAG, ">>> protect() called for fd: $fd")
-        return protect(fd.toInt())
-    }
-    
-    override fun onEmitStatus(status: Long, msg: String?): Long {
-        Log.d(TAG, ">>> Xray Status [$status]: $msg")
+    override fun onEmitStatus(code: Long, msg: String?): Long {
+        Log.d(TAG, ">>> Xray Status [$code]: $msg")
         return 0
-    }
-    
-    override fun sendFd(): Long {
-        Log.d(TAG, ">>> sendFd() called")
-        return pfd?.fd?.toLong() ?: -1
     }
 
     private fun stopVpn() {
@@ -204,8 +174,8 @@ class V2RayVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         isRunning = false
         
         try {
-            v2rayPoint?.stopLoop()
-            v2rayPoint = null
+            coreController?.stopLoop()
+            coreController = null
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Xray", e)
         }
