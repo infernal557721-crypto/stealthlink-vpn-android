@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.stealthlink.services.WireGuardVpnService
 import com.example.stealthlink.ui.theme.*
+import kotlinx.coroutines.launch
 
 enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED
@@ -312,6 +313,13 @@ fun HomeScreen(
 
 @Composable
 fun SubscriptionScreen() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<com.example.stealthlink.update.UpdateManager.UpdateInfo?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally, 
         modifier = Modifier.fillMaxWidth()
@@ -327,7 +335,6 @@ fun SubscriptionScreen() {
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        val context = LocalContext.current
         Button(
             onClick = {
                 Toast.makeText(context, "Переход к оплате...", Toast.LENGTH_SHORT).show()
@@ -340,6 +347,77 @@ fun SubscriptionScreen() {
         
         Spacer(modifier = Modifier.height(8.dp))
         Text("Оплата через ЮKassa", color = TextGray, fontSize = 12.sp)
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Check for updates button
+        OutlinedButton(
+            onClick = {
+                isCheckingUpdate = true
+                scope.launch {
+                    val updateManager = com.example.stealthlink.update.UpdateManager(context)
+                    val info = updateManager.checkForUpdate()
+                    updateInfo = info
+                    isCheckingUpdate = false
+                    if (info.hasUpdate) {
+                        showUpdateDialog = true
+                    } else {
+                        Toast.makeText(context, "У вас последняя версия", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isCheckingUpdate && !isDownloading
+        ) {
+            if (isCheckingUpdate) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = GoldPrimary, strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(
+                if (isDownloading) "Скачивание..." else "Проверить обновления",
+                color = GoldPrimary
+            )
+        }
+        
+        Text("Версия: 1.0.0", color = TextGray, fontSize = 12.sp)
+    }
+    
+    // Update available dialog
+    if (showUpdateDialog && updateInfo != null) {
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            title = { Text("Доступно обновление", color = TextWhite) },
+            text = { 
+                Text(
+                    "Версия ${updateInfo!!.versionName}\n\nСкачать и установить?",
+                    color = TextGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUpdateDialog = false
+                        isDownloading = true
+                        val updateManager = com.example.stealthlink.update.UpdateManager(context)
+                        updateManager.downloadAndInstall(
+                            updateInfo!!.downloadUrl,
+                            onProgress = { },
+                            onComplete = { isDownloading = false }
+                        )
+                        Toast.makeText(context, "Скачивание началось...", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
+                ) {
+                    Text("Обновить", color = DarkBackground)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }) {
+                    Text("Позже", color = TextGray)
+                }
+            },
+            containerColor = DarkSurface
+        )
     }
 }
 
