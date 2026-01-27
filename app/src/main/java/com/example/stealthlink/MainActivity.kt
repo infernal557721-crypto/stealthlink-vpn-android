@@ -36,9 +36,17 @@ enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED
 }
 
+data class TrialInfo(
+    val isActive: Boolean,
+    val hoursRemaining: Int,
+    val hasExpired: Boolean,
+    val neverStarted: Boolean
+)
+
 class MainActivity : ComponentActivity() {
     
     private var connectionState = mutableStateOf(ConnectionState.DISCONNECTED)
+    private var trialInfoState = mutableStateOf(TrialInfo(false, 24, false, true))
     private lateinit var prefs: SharedPreferences
     
     private val vpnPermissionLauncher = registerForActivityResult(
@@ -63,7 +71,7 @@ class MainActivity : ComponentActivity() {
             StealthLinkTheme {
                 MainScreen(
                     connectionState = connectionState.value,
-                    trialInfo = getTrialInfo(),
+                    trialInfo = trialInfoState.value,
                     onConnect = { requestVpnPermissionAndConnect() },
                     onDisconnect = { stopVpnService() },
                     onStartTrial = { startTrial() }
@@ -76,6 +84,8 @@ class MainActivity : ComponentActivity() {
         if (!prefs.contains("first_launch_time")) {
             prefs.edit().putLong("first_launch_time", System.currentTimeMillis()).apply()
         }
+        // Update trial state
+        trialInfoState.value = getTrialInfo()
     }
     
     private fun startTrial() {
@@ -84,16 +94,12 @@ class MainActivity : ComponentActivity() {
                 .putBoolean("trial_started", true)
                 .putLong("trial_start_time", System.currentTimeMillis())
                 .apply()
+            // Update trial state immediately
+            trialInfoState.value = getTrialInfo()
             Toast.makeText(this, "Пробный период активирован на 24 часа!", Toast.LENGTH_SHORT).show()
         }
     }
-    
-    data class TrialInfo(
-        val isActive: Boolean,
-        val hoursRemaining: Int,
-        val hasExpired: Boolean,
-        val neverStarted: Boolean
-    )
+
     
     private fun getTrialInfo(): TrialInfo {
         val trialStarted = prefs.getBoolean("trial_started", false)
@@ -166,7 +172,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     connectionState: ConnectionState,
-    trialInfo: MainActivity.TrialInfo,
+    trialInfo: TrialInfo,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onStartTrial: () -> Unit
@@ -212,7 +218,7 @@ fun MainScreen(
 @Composable
 fun HomeScreen(
     connectionState: ConnectionState,
-    trialInfo: MainActivity.TrialInfo,
+    trialInfo: TrialInfo,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onStartTrial: () -> Unit
