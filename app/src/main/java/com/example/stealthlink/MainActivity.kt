@@ -31,7 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.stealthlink.services.WireGuardVpnService
 import com.example.stealthlink.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED
@@ -68,6 +71,9 @@ class MainActivity : ComponentActivity() {
         // Initialize trial on first launch
         initializeTrial()
         
+        // Check for updates on launch
+        checkForUpdatesOnLaunch()
+        
         setContent {
             StealthLinkTheme {
                 MainScreen(
@@ -79,6 +85,62 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+    
+    private fun checkForUpdatesOnLaunch() {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val updateManager = com.example.stealthlink.update.UpdateManager(this@MainActivity)
+                val updateInfo = updateManager.checkForUpdate()
+                
+                if (updateInfo.hasUpdate) {
+                    withContext(Dispatchers.Main) {
+                        showUpdateNotification(updateInfo.versionName)
+                    }
+                }
+            } catch (e: Exception) {
+                // Silent fail - don't bother user if update check fails
+            }
+        }
+    }
+    
+    private fun showUpdateNotification(newVersion: String) {
+        val channelId = "update_channel"
+        
+        // Create notification channel for Android 8.0+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "Обновления",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Уведомления о новых версиях приложения"
+            }
+            val notificationManager = getSystemService(android.app.NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+        
+        // Create intent to open app
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("open_updates", true)
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Доступно обновление!")
+            .setContentText("Версия $newVersion готова к установке")
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.notify(1001, notification)
     }
     
     private fun initializeTrial() {
