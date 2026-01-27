@@ -80,7 +80,7 @@ class UpdateManager(private val context: Context) {
      * Download and install update
      */
     fun downloadAndInstall(downloadUrl: String, onProgress: (Int) -> Unit, onComplete: () -> Unit) {
-        val fileName = "stealthlink-update.apk"
+        val fileName = "vpncode-update.apk"
         val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         val file = File(downloadDir, fileName)
         
@@ -88,7 +88,7 @@ class UpdateManager(private val context: Context) {
         if (file.exists()) file.delete()
         
         val request = DownloadManager.Request(Uri.parse(downloadUrl))
-            .setTitle("StealthLink VPN Update")
+            .setTitle("VpnCode Update")
             .setDescription("Скачивание обновления...")
             .setDestinationUri(Uri.fromFile(file))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
