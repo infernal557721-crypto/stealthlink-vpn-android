@@ -1,7 +1,9 @@
 package com.example.stealthlink
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -23,13 +25,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.stealthlink.services.V2RayVpnService
+import com.example.stealthlink.services.WireGuardVpnService
 import com.example.stealthlink.ui.theme.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED
@@ -37,21 +39,15 @@ enum class ConnectionState {
 
 class MainActivity : ComponentActivity() {
     
-    // Shared state for connection
     private var connectionState = mutableStateOf(ConnectionState.DISCONNECTED)
-    private var pendingConfig: String? = null
+    private lateinit var prefs: SharedPreferences
     
-    // VPN permission launcher
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            // Permission granted - start VPN
-            pendingConfig?.let { config ->
-                startVpnService(config)
-            }
+            startVpnService()
         } else {
-            // Permission denied
             connectionState.value = ConnectionState.DISCONNECTED
             Toast.makeText(this, "VPN permission denied", Toast.LENGTH_SHORT).show()
         }
@@ -59,35 +55,92 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        prefs = getSharedPreferences("stealthlink_prefs", Context.MODE_PRIVATE)
+        
+        // Initialize trial on first launch
+        initializeTrial()
+        
         setContent {
             StealthLinkTheme {
                 MainScreen(
                     connectionState = connectionState.value,
-                    onConnect = { config -> requestVpnPermissionAndConnect(config) },
-                    onDisconnect = { stopVpnService() }
+                    trialInfo = getTrialInfo(),
+                    onConnect = { requestVpnPermissionAndConnect() },
+                    onDisconnect = { stopVpnService() },
+                    onStartTrial = { startTrial() }
                 )
             }
         }
     }
     
-    private fun requestVpnPermissionAndConnect(config: String) {
-        connectionState.value = ConnectionState.CONNECTING
-        pendingConfig = config
-        
-        val prepareIntent = VpnService.prepare(this)
-        if (prepareIntent != null) {
-            // Permission needed - show system dialog
-            vpnPermissionLauncher.launch(prepareIntent)
-        } else {
-            // Already have permission
-            startVpnService(config)
+    private fun initializeTrial() {
+        if (!prefs.contains("first_launch_time")) {
+            prefs.edit().putLong("first_launch_time", System.currentTimeMillis()).apply()
         }
     }
     
-    private fun startVpnService(config: String) {
+    private fun startTrial() {
+        if (!prefs.getBoolean("trial_started", false)) {
+            prefs.edit()
+                .putBoolean("trial_started", true)
+                .putLong("trial_start_time", System.currentTimeMillis())
+                .apply()
+            Toast.makeText(this, "Пробный период активирован на 24 часа!", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    data class TrialInfo(
+        val isActive: Boolean,
+        val hoursRemaining: Int,
+        val hasExpired: Boolean,
+        val neverStarted: Boolean
+    )
+    
+    private fun getTrialInfo(): TrialInfo {
+        val trialStarted = prefs.getBoolean("trial_started", false)
+        if (!trialStarted) {
+            return TrialInfo(isActive = false, hoursRemaining = 24, hasExpired = false, neverStarted = true)
+        }
+        
+        val trialStartTime = prefs.getLong("trial_start_time", 0)
+        val trialDuration = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
+        val elapsed = System.currentTimeMillis() - trialStartTime
+        val remaining = trialDuration - elapsed
+        
+        return if (remaining > 0) {
+            val hoursRemaining = (remaining / (60 * 60 * 1000)).toInt()
+            TrialInfo(isActive = true, hoursRemaining = hoursRemaining, hasExpired = false, neverStarted = false)
+        } else {
+            TrialInfo(isActive = false, hoursRemaining = 0, hasExpired = true, neverStarted = false)
+        }
+    }
+    
+    private fun requestVpnPermissionAndConnect() {
+        val trialInfo = getTrialInfo()
+        
+        // Check if user can connect (trial active or has subscription)
+        if (trialInfo.hasExpired) {
+            Toast.makeText(this, "Пробный период закончился. Оформите подписку.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (trialInfo.neverStarted) {
+            Toast.makeText(this, "Активируйте пробный период", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        connectionState.value = ConnectionState.CONNECTING
+        
+        val prepareIntent = VpnService.prepare(this)
+        if (prepareIntent != null) {
+            vpnPermissionLauncher.launch(prepareIntent)
+        } else {
+            startVpnService()
+        }
+    }
+    
+    private fun startVpnService() {
         try {
-            val intent = Intent(this, V2RayVpnService::class.java)
-            intent.putExtra("V2RAY_CONFIG", config)
+            val intent = Intent(this, WireGuardVpnService::class.java)
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -95,17 +148,16 @@ class MainActivity : ComponentActivity() {
                 startService(intent)
             }
             
-            // Update state after a short delay
             connectionState.value = ConnectionState.CONNECTED
         } catch (e: Exception) {
             e.printStackTrace()
             connectionState.value = ConnectionState.DISCONNECTED
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
     private fun stopVpnService() {
-        val intent = Intent(this, V2RayVpnService::class.java)
+        val intent = Intent(this, WireGuardVpnService::class.java)
         intent.action = "STOP"
         startService(intent)
         connectionState.value = ConnectionState.DISCONNECTED
@@ -115,8 +167,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     connectionState: ConnectionState,
-    onConnect: (String) -> Unit,
-    onDisconnect: () -> Unit
+    trialInfo: MainActivity.TrialInfo,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onStartTrial: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(1) }
 
@@ -156,8 +210,8 @@ fun MainScreen(
         ) {
             when (selectedTab) {
                 0 -> SubscriptionScreen()
-                1 -> HomeScreen(connectionState, onConnect, onDisconnect)
-                2 -> Text("Настройки", color = Color.White)
+                1 -> HomeScreen(connectionState, trialInfo, onConnect, onDisconnect, onStartTrial)
+                2 -> SettingsScreen()
             }
         }
     }
@@ -166,8 +220,10 @@ fun MainScreen(
 @Composable
 fun HomeScreen(
     connectionState: ConnectionState,
-    onConnect: (String) -> Unit,
-    onDisconnect: () -> Unit
+    trialInfo: MainActivity.TrialInfo,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onStartTrial: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Vpn Code", fontSize = 36.sp, fontWeight = FontWeight.Black, color = GoldPrimary)
@@ -186,89 +242,27 @@ fun HomeScreen(
         
         Text(statusText, color = statusColor)
         
+        // Trial status
+        Spacer(modifier = Modifier.height(8.dp))
+        when {
+            trialInfo.neverStarted -> {
+                Text("Пробный период: не активирован", color = TextGray, fontSize = 12.sp)
+            }
+            trialInfo.isActive -> {
+                Text("Пробный период: ${trialInfo.hoursRemaining} ч. осталось", color = GreenSuccess, fontSize = 12.sp)
+            }
+            trialInfo.hasExpired -> {
+                Text("Пробный период истёк", color = Color.Red, fontSize = 12.sp)
+            }
+        }
+        
         Spacer(modifier = Modifier.height(30.dp))
         
         // Power Button
         Button(
             onClick = { 
                 if (connectionState == ConnectionState.DISCONNECTED) {
-                    val config = """
-{
-  "log": {
-    "loglevel": "debug"
-  },
-  "dns": {
-    "servers": [
-      "8.8.8.8",
-      "1.1.1.1"
-    ]
-  },
-  "inbounds": [
-    {
-      "tag": "socks-in",
-      "port": 10808,
-      "listen": "127.0.0.1",
-      "protocol": "socks",
-      "settings": {
-        "auth": "noauth",
-        "udp": true
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls", "quic"]
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "81.200.154.49",
-            "port": 443,
-            "users": [
-              {
-                "id": "ffb23eb7-669a-43c2-95fc-902b6c6b9c95",
-                "encryption": "none",
-                "flow": "xtls-rprx-vision"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "reality",
-        "realitySettings": {
-          "fingerprint": "chrome",
-          "serverName": "www.google.com",
-          "publicKey": "t1mvlx-GfAiYPNoDbNzsBH0nA-EtUyDJKTGM-eavS3k",
-          "shortId": "12345678",
-          "spiderX": "/"
-        }
-      },
-      "tag": "proxy"
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "direct"
-    }
-  ],
-  "routing": {
-    "domainStrategy": "AsIs",
-    "rules": [
-      {
-        "type": "field",
-        "ip": ["geoip:private"],
-        "outboundTag": "direct"
-      }
-    ]
-  }
-}
-                    """.trimIndent()
-                    onConnect(config)
+                    onConnect()
                 } else if (connectionState == ConnectionState.CONNECTED) {
                     onDisconnect()
                 }
@@ -282,7 +276,8 @@ fun HomeScreen(
                     else -> GoldPrimary
                 }
             ),
-            enabled = connectionState != ConnectionState.CONNECTING
+            enabled = connectionState != ConnectionState.CONNECTING && 
+                      (trialInfo.isActive || !trialInfo.hasExpired && !trialInfo.neverStarted)
         ) {
             if (connectionState == ConnectionState.CONNECTING) {
                 CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(48.dp))
@@ -298,40 +293,27 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Trial Button
-        val context = androidx.compose.ui.platform.LocalContext.current
-        TextButton(onClick = { 
-            Toast.makeText(context, "Пробный период активирован!", Toast.LENGTH_SHORT).show()
-        }) {
-           Text("Пробный период (24 ч)", color = GoldPrimary) 
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Split Tunneling Toggle
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(DarkSurface)
-                .padding(16.dp)
-        ) {
-            Text("Только соцсети", color = TextWhite, modifier = Modifier.weight(1f))
-            Switch(checked = false, onCheckedChange = {})
+        // Trial Button (only show if never started)
+        if (trialInfo.neverStarted) {
+            Button(
+                onClick = onStartTrial,
+                colors = ButtonDefaults.buttonColors(containerColor = GreenSuccess)
+            ) {
+                Text("Активировать пробный период (24 ч)", color = Color.White)
+            }
+        } else if (trialInfo.hasExpired) {
+            Text(
+                "Оформите подписку для продолжения",
+                color = GoldPrimary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
 
 @Composable
 fun SubscriptionScreen() {
-    val repository = remember { com.example.stealthlink.data.repository.VpnRepository() }
-    var tariffs by remember { mutableStateOf<List<com.example.stealthlink.data.model.Tariff>>(emptyList()) }
-
-    LaunchedEffect(Unit) {
-        tariffs = repository.getTariffs()
-    }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally, 
         modifier = Modifier.fillMaxWidth()
@@ -339,24 +321,42 @@ fun SubscriptionScreen() {
         Text("ПРЕМИУМ", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         
-        if (tariffs.isEmpty()) {
-            CircularProgressIndicator(color = GoldPrimary)
-        } else {
-            tariffs.forEach { tariff ->
-                TariffCard(tariff.name, "${tariff.price} ₽", tariff.isHit)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
+        TariffCard("1 месяц", "100 ₽", false)
+        Spacer(modifier = Modifier.height(8.dp))
+        TariffCard("3 месяца", "250 ₽", true)
+        Spacer(modifier = Modifier.height(8.dp))
+        TariffCard("1 год", "800 ₽", false)
         
         Spacer(modifier = Modifier.height(24.dp))
         
+        val context = LocalContext.current
         Button(
-            onClick = {},
+            onClick = {
+                Toast.makeText(context, "Переход к оплате...", Toast.LENGTH_SHORT).show()
+            },
             modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
         ) {
-            Text("Продолжить", color = DarkBackground, fontWeight = FontWeight.Bold)
+            Text("Оформить подписку", color = DarkBackground, fontWeight = FontWeight.Bold)
         }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Оплата через ЮKassa", color = TextGray, fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun SettingsScreen() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Настройки", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Text("Версия: 1.0.0", color = TextGray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("StealthLink VPN", color = TextWhite)
     }
 }
 
@@ -375,7 +375,7 @@ fun TariffCard(duration: String, price: String, isHit: Boolean) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(duration, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 if (isHit) {
-                    Text("ХИТ ПРОДАЖ", color = GoldPrimary, fontSize = 12.sp)
+                    Text("ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ", color = GoldPrimary, fontSize = 12.sp)
                 }
             }
             Text(price, color = TextWhite, fontSize = 18.sp)

@@ -30,9 +30,9 @@
             </intent-filter>
         </activity>
 
-        <!-- VPN SERVICE DECLARATION -->
+        <!-- WireGuard VPN SERVICE -->
         <service
-            android:name=".services.V2RayVpnService"
+            android:name=".services.WireGuardVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="specialUse"
             android:exported="false">

@@ -68,8 +68,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
-    // Xray/V2Ray core with TUN support (v26.1.23 from GitHub releases)
-    implementation(files("libs/libv2ray.aar"))
+    // WireGuard VPN tunnel
+    implementation("com.wireguard.android:tunnel:1.0.20230706")
  
     
     testImplementation("junit:junit:4.13.2")
