@@ -441,7 +441,7 @@ fun SubscriptionScreen() {
             )
         }
         
-        Text("Версия: 1.0.0", color = TextGray, fontSize = 12.sp)
+        Text("Версия: ${BuildConfig.VERSION_NAME}", color = TextGray, fontSize = 12.sp)
     }
     
     // Update available dialog

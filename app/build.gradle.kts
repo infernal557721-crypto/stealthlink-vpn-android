@@ -7,12 +7,17 @@ android {
     namespace = "com.example.stealthlink"
     compileSdk = 34
 
+    buildFeatures {
+        buildConfig = true
+        compose = true
+    }
+
     defaultConfig {
         applicationId = "com.stealthlink.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
