@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -172,28 +171,22 @@ fun MainScreen(
     onDisconnect: () -> Unit,
     onStartTrial: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(1) }
+    var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
         containerColor = DarkBackground,
         bottomBar = {
             NavigationBar(containerColor = DarkSurface) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Оплата") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Главная") },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Главная") },
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Подписка") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = GoldPrimary)
                 )
             }
@@ -209,9 +202,8 @@ fun MainScreen(
             verticalArrangement = Arrangement.Center
         ) {
             when (selectedTab) {
-                0 -> SubscriptionScreen()
-                1 -> HomeScreen(connectionState, trialInfo, onConnect, onDisconnect, onStartTrial)
-                2 -> SettingsScreen()
+                0 -> HomeScreen(connectionState, trialInfo, onConnect, onDisconnect, onStartTrial)
+                1 -> SubscriptionScreen()
             }
         }
     }
@@ -342,21 +334,6 @@ fun SubscriptionScreen() {
         
         Spacer(modifier = Modifier.height(8.dp))
         Text("Оплата через ЮKassa", color = TextGray, fontSize = 12.sp)
-    }
-}
-
-@Composable
-fun SettingsScreen() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text("Настройки", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Text("Версия: 1.0.0", color = TextGray)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("StealthLink VPN", color = TextWhite)
     }
 }
 
