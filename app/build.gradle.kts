@@ -68,8 +68,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
-    // Xray/V2Ray core with TUN support
-    implementation("com.github.2dust:AndroidLibXrayLite:v26.1.23")
+    // Xray/V2Ray core with TUN support (v26.1.23 from GitHub releases)
+    implementation(files("libs/libv2ray.aar"))
  
     
     testImplementation("junit:junit:4.13.2")
