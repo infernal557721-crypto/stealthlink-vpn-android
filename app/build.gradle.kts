@@ -65,13 +65,11 @@ dependencies {
     // Networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     
-    // V2Ray/Xray Utilities
-    implementation(files("libs/libv2ray.aar"))
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
-    // tun2socks - Routes TUN traffic to SOCKS proxy
-    implementation("com.ooimi.library:tun2socks:1.0.4")
+    // Xray/V2Ray core with TUN support
+    implementation("com.github.2dust:AndroidLibXrayLite:v26.1.23")
  
     
     testImplementation("junit:junit:4.13.2")
