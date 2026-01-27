@@ -92,7 +92,7 @@ class V2RayVpnService : VpnService(), CoreCallbackHandler {
                 coreController = Libv2ray.newCoreController(this@V2RayVpnService)
                 
                 // Start the Xray core with config and TUN file descriptor
-                coreController?.startLoop(config, tunFd.toLong())
+                coreController?.startLoop(config, tunFd)
                 
                 Log.d(TAG, "=== VPN fully connected ===")
 
