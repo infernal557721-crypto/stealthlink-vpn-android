@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.*
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.*
@@ -184,7 +185,7 @@ class MainActivity : ComponentActivity() {
         }
         
         val trialStartTime = prefs.getLong("trial_start_time", 0)
-        val trialDuration = 3 * 60 * 1000L // 3 minutes for testing (was 24 hours)
+        val trialDuration = 24 * 60 * 60 * 1000L // 24 hours
         val elapsed = System.currentTimeMillis() - trialStartTime
         val remaining = trialDuration - elapsed
         
@@ -220,20 +221,55 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startVpnService() {
-        try {
-            val intent = Intent(this, WireGuardVpnService::class.java)
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+        val scope = CoroutineScope(Dispatchers.Main)
+        scope.launch {
+            try {
+                // Get Device ID (using ANDROID_ID for simplicity in this demo)
+                // In production, consider a more robust ID or Advertising ID
+                val deviceId = android.provider.Settings.Secure.getString(
+                    contentResolver, 
+                    android.provider.Settings.Secure.ANDROID_ID
+                )
+
+                // Show loading 
+                connectionState.value = ConnectionState.CONNECTING
+
+                val config = withContext(Dispatchers.IO) {
+                    val request = com.example.stealthlink.data.api.ConfigRequest(deviceId)
+                    com.example.stealthlink.data.api.RetrofitClient.api.getVpnConfig(request)
+                }
+
+                val intent = Intent(this@MainActivity, WireGuardVpnService::class.java)
+                
+                intent.putExtra(WireGuardVpnService.EXTRA_PUBLIC_KEY, config.public_key)
+                intent.putExtra(WireGuardVpnService.EXTRA_ENDPOINT, config.endpoint)
+                intent.putExtra(WireGuardVpnService.EXTRA_PRIVATE_KEY, config.private_key)
+                intent.putExtra(WireGuardVpnService.EXTRA_ADDRESS, config.address)
+                intent.putExtra(WireGuardVpnService.EXTRA_DNS, config.dns)
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
+                
+                connectionState.value = ConnectionState.CONNECTED
+                
+                // Update local trial info to match successful connection
+                // This is just for UI, the real check is on backend
+                trialInfoState.value = trialInfoState.value.copy(isActive = true, hasExpired = false)
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                connectionState.value = ConnectionState.DISCONNECTED
+                
+                if (e is retrofit2.HttpException && e.code() == 403) {
+                     Toast.makeText(this@MainActivity, "Пробный период истек. Пожалуйста, оформите подписку.", Toast.LENGTH_LONG).show()
+                     trialInfoState.value = trialInfoState.value.copy(isActive = false, hasExpired = true)
+                } else {
+                     Toast.makeText(this@MainActivity, "Ошибка подключения: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
-            
-            connectionState.value = ConnectionState.CONNECTED
-        } catch (e: Exception) {
-            e.printStackTrace()
-            connectionState.value = ConnectionState.DISCONNECTED
-            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -256,9 +292,9 @@ fun MainScreen(
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
-        containerColor = DarkBackground,
+        containerColor = Color.Transparent, // Transparent to show gradient
         bottomBar = {
-            NavigationBar(containerColor = DarkSurface) {
+            NavigationBar(containerColor = DarkSurface.copy(alpha = 0.95f)) {
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Home, contentDescription = "Главная") },
                     selected = selectedTab == 0,
@@ -274,14 +310,16 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
-                .padding(innerPadding)
                 .fillMaxSize()
-                .background(DarkBackground)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(BackgroundGradientStart, BackgroundGradientEnd)
+                    )
+                )
+                .padding(innerPadding)
+                .padding(16.dp)
         ) {
             when (selectedTab) {
                 0 -> HomeScreen(connectionState, trialInfo, onConnect, onDisconnect, onStartTrial)
@@ -299,89 +337,168 @@ fun HomeScreen(
     onDisconnect: () -> Unit,
     onStartTrial: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Vpn Code", fontSize = 36.sp, fontWeight = FontWeight.Black, color = GoldPrimary)
-        Spacer(modifier = Modifier.height(8.dp))
+    // Animation for pulsing effect
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (connectionState == ConnectionState.DISCONNECTED) 1.05f else 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(1500),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        )
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // Premium Title
+        Text(
+            "STEALTH LINK", 
+            fontSize = 32.sp, 
+            fontWeight = FontWeight.Black, 
+            color = GoldPrimary,
+            letterSpacing = 2.sp
+        )
+        Text(
+            "SECURE VPN", 
+            fontSize = 12.sp, 
+            color = TextGray, 
+            letterSpacing = 4.sp
+        )
         
-        val statusText = when (connectionState) {
-            ConnectionState.DISCONNECTED -> "ОТКЛЮЧЕНО"
-            ConnectionState.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
-            ConnectionState.CONNECTED -> "ПОДКЛЮЧЕНО"
-        }
-        val statusColor = when (connectionState) {
-            ConnectionState.DISCONNECTED -> TextGray
-            ConnectionState.CONNECTING -> GoldPrimary
-            ConnectionState.CONNECTED -> GreenSuccess
-        }
+        Spacer(modifier = Modifier.height(48.dp))
         
-        Text(statusText, color = statusColor)
-        
-        // Trial status
-        Spacer(modifier = Modifier.height(8.dp))
-        when {
-            trialInfo.neverStarted -> {
-                Text("Пробный период: не активирован", color = TextGray, fontSize = 12.sp)
-            }
-            trialInfo.isActive -> {
-                Text("Пробный период: ${trialInfo.hoursRemaining} ч. осталось", color = GreenSuccess, fontSize = 12.sp)
-            }
-            trialInfo.hasExpired -> {
-                Text("Пробный период истёк", color = Color.Red, fontSize = 12.sp)
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(30.dp))
-        
-        // Power Button
-        Button(
-            onClick = { 
-                if (connectionState == ConnectionState.DISCONNECTED) {
-                    onConnect()
-                } else if (connectionState == ConnectionState.CONNECTED) {
-                    onDisconnect()
-                }
-            },
-            modifier = Modifier.size(200.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = when (connectionState) {
-                    ConnectionState.CONNECTED -> DarkGold
-                    ConnectionState.CONNECTING -> DarkGold
-                    else -> GoldPrimary
-                }
-            ),
-            enabled = connectionState != ConnectionState.CONNECTING && 
-                      (trialInfo.isActive || !trialInfo.hasExpired && !trialInfo.neverStarted)
-        ) {
+        // Connection Button with Ring
+        Box(contentAlignment = Alignment.Center) {
+            // Outer Ring (Pulsing)
             if (connectionState == ConnectionState.CONNECTING) {
-                CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(48.dp))
-            } else {
-                Text(
-                    if (connectionState == ConnectionState.CONNECTED) "СТОП" else "СТАРТ",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DarkBackground
+                CircularProgressIndicator(
+                    modifier = Modifier.size(240.dp),
+                    color = GoldPrimary,
+                    strokeWidth = 2.dp
                 )
             }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Trial Button (only show if never started)
-        if (trialInfo.neverStarted) {
+            
+            // Main Button
             Button(
-                onClick = onStartTrial,
-                colors = ButtonDefaults.buttonColors(containerColor = GreenSuccess)
+                onClick = { 
+                    if (connectionState == ConnectionState.DISCONNECTED) onConnect() 
+                    else if (connectionState == ConnectionState.CONNECTED) onDisconnect()
+                },
+                modifier = Modifier
+                    .size(200.dp)
+                    .androidx.compose.ui.draw.scale(scale), // Use full package for scale if import missing
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when (connectionState) {
+                        ConnectionState.CONNECTED -> GreenSuccess
+                        ConnectionState.CONNECTING -> DarkGold
+                        else -> GoldPrimary
+                    }
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 12.dp,
+                    pressedElevation = 6.dp
+                ),
+                enabled = connectionState != ConnectionState.CONNECTING && 
+                          (trialInfo.isActive || !trialInfo.hasExpired && !trialInfo.neverStarted)
             ) {
-                Text("Активировать пробный период (24 ч)", color = Color.White)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.filled.PowerSettingsNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = DarkBackground
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        when (connectionState) {
+                            ConnectionState.CONNECTED -> "STOP"
+                            ConnectionState.CONNECTING -> "..."
+                            else -> "START"
+                        },
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkBackground
+                    )
+                }
             }
-        } else if (trialInfo.hasExpired) {
-            Text(
-                "Оформите подписку для продолжения",
-                color = GoldPrimary,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Status Text
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        when (connectionState) {
+                            ConnectionState.CONNECTED -> GreenSuccess
+                            ConnectionState.CONNECTING -> GoldPrimary
+                            else -> TextGray
+                        }, 
+                        CircleShape
+                    )
             )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                when (connectionState) {
+                    ConnectionState.DISCONNECTED -> "DISCONNECTED"
+                    ConnectionState.CONNECTING -> "CONNECTING..."
+                    ConnectionState.CONNECTED -> "SECURELY CONNECTED"
+                },
+                color = TextWhite,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Trial / Status Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DarkSurface.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                when {
+                    trialInfo.neverStarted -> {
+                         Text("Free Trial Available", color = TextWhite, fontWeight = FontWeight.Bold)
+                         Spacer(modifier = Modifier.height(8.dp))
+                         Button(
+                            onClick = onStartTrial,
+                            colors = ButtonDefaults.buttonColors(containerColor = PremiumGoldStart)
+                        ) {
+                            Text("Activate 24h Access", color = DarkBackground)
+                        }
+                    }
+                    trialInfo.isActive -> {
+                        Text("Trial Active", color = GreenSuccess, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = trialInfo.hoursRemaining / 24f,
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                            color = GoldPrimary,
+                            trackColor = DarkBackground
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("${trialInfo.hoursRemaining} hours remaining", color = TextGray, fontSize = 12.sp)
+                    }
+                    trialInfo.hasExpired -> {
+                        Text("Trial Expired", color = RedStop, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Please upgrade to Premium", color = TextGray, fontSize = 12.sp)
+                    }
+                }
+            }
         }
     }
 }
