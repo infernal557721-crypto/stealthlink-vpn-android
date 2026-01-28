@@ -48,7 +48,9 @@ class UpdateManager(private val context: Context) {
             
             // Parse version code from tag (e.g., "1.0.1" -> 101)
             val latestVersionCode = parseVersionCode(latestVersion)
-            val currentVersionCode = getCurrentVersionCode()
+            // Parse CURRENT version name too, to be consistent with tag parsing
+            val currentVersionName = getCurrentVersionName()
+            val currentVersionCode = parseVersionCode(currentVersionName)
             
             // Find APK asset download URL
             val assets = json.getJSONArray("assets")
@@ -138,17 +140,12 @@ class UpdateManager(private val context: Context) {
         }
     }
     
-    private fun getCurrentVersionCode(): Int {
+    private fun getCurrentVersionName(): String {
         return try {
             val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                pInfo.longVersionCode.toInt()
-            } else {
-                @Suppress("DEPRECATION")
-                pInfo.versionCode
-            }
+            pInfo.versionName
         } catch (e: Exception) {
-            1
+            "1.0.0"
         }
     }
     
