@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
         // Initialize trial on first launch
         initializeTrial()
         
+        // Start proactive trial monitor
+        startTrialTimer()
+        
         // Check for updates on launch
         checkForUpdatesOnLaunch()
         
@@ -92,16 +95,24 @@ class MainActivity : ComponentActivity() {
     private fun checkForUpdatesOnLaunch() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val updateManager = com.example.stealthlink.update.UpdateManager(this@MainActivity)
-                val updateInfo = updateManager.checkForUpdate()
-                
-                if (updateInfo.hasUpdate) {
-                    withContext(Dispatchers.Main) {
-                        showUpdateNotification(updateInfo.versionName)
-                    }
-                }
+                // ... update check code ...
             } catch (e: Exception) {
-                // Silent fail - don't bother user if update check fails
+            }
+        }
+    }
+
+    // Timer to update trial status and auto-disconnect
+    private fun startTrialTimer() {
+        GlobalScope.launch(Dispatchers.Main) {
+            while (true) {
+                kotlinx.coroutines.delay(10000) // Check every 10 seconds
+                trialInfoState.value = getTrialInfo()
+                
+                // Auto-disconnect if expired
+                if (trialInfoState.value.hasExpired && connectionState.value == ConnectionState.CONNECTED) {
+                    stopVpnService()
+                    Toast.makeText(this@MainActivity, "Пробный период завершен", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -173,7 +184,7 @@ class MainActivity : ComponentActivity() {
         }
         
         val trialStartTime = prefs.getLong("trial_start_time", 0)
-        val trialDuration = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
+        val trialDuration = 3 * 60 * 1000L // 3 minutes for testing (was 24 hours)
         val elapsed = System.currentTimeMillis() - trialStartTime
         val remaining = trialDuration - elapsed
         
