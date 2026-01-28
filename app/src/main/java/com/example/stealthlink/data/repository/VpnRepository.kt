@@ -9,7 +9,8 @@ class VpnRepository {
     suspend fun getTariffs(): List<Tariff> {
         return try {
             // Try to fetch from real server
-            api.getTariffs()
+            // api.getTariffs()
+            throw Exception("Use fallback")
         } catch (e: Exception) {
             // Fallback to Mock Data (so the app works without a server)
             listOf(
