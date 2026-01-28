@@ -376,7 +376,6 @@ fun HomeScreen(
 }
 
 @Composable
-@Composable
 fun SubscriptionScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
