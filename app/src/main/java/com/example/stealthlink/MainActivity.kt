@@ -15,12 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Warning // Fallback if PowerSettingsNew is problematic, but let's try direct import
-import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.*
@@ -412,7 +408,10 @@ fun HomeScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = androidx.compose.material.icons.filled.PowerSettingsNew,
+                        imageVector = if (connectionState == ConnectionState.CONNECTED) 
+                            androidx.compose.material.icons.Icons.Default.Stop 
+                        else 
+                            androidx.compose.material.icons.Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = DarkBackground
