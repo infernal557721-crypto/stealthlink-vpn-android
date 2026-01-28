@@ -26,8 +26,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale // Keep this import
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.* // Import animations
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -389,7 +391,8 @@ fun HomeScreen(
                 },
                 modifier = Modifier
                     .size(200.dp)
-                    .androidx.compose.ui.draw.scale(scale), // Use full package for scale if import missing
+                    .size(200.dp)
+                    .scale(scale), // Use imported extension directly
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when (connectionState) {

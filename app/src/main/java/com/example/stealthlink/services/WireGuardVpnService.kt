@@ -32,16 +32,21 @@ class WireGuardVpnService : VpnService() {
     private var goBackend: com.wireguard.android.backend.GoBackend? = null
     private var tunnel: com.wireguard.android.backend.Tunnel? = null
 
+    private var clientPrivateKey: String? = null
+    private var clientAddress: String? = null
+    private var dnsServers: String? = null
+    private var serverPublicKey: String? = null
+    private var serverEndpoint: String? = null
+
     companion object {
         private const val TAG = "WireGuardVpnService"
         private const val NOTIFICATION_ID = 1
         
-        // Server configuration
-        const val SERVER_PUBLIC_KEY = "Xm8lIKPPtOT5L3B3AdoBijVXOQG+3fbdN0dxFMfVt3Y="
-        const val SERVER_ENDPOINT = "81.200.154.49:51820"
-        const val CLIENT_PRIVATE_KEY = "4KfsS4zDzVkSai2f3UMvHtw27otfuqjjSNvhVGy82Gg="
-        const val CLIENT_ADDRESS = "10.66.66.2/32"
-        const val DNS_SERVERS = "8.8.8.8, 1.1.1.1"
+        const val EXTRA_PRIVATE_KEY = "private_key"
+        const val EXTRA_ADDRESS = "address"
+        const val EXTRA_DNS = "dns"
+        const val EXTRA_PUBLIC_KEY = "public_key"
+        const val EXTRA_ENDPOINT = "endpoint"
     }
 
     override fun onCreate() {
@@ -55,6 +60,19 @@ class WireGuardVpnService : VpnService() {
         
         if (command == "STOP") {
             stopVpn()
+            return START_NOT_STICKY
+        }
+
+        // extract config
+        clientPrivateKey = intent?.getStringExtra(EXTRA_PRIVATE_KEY)
+        clientAddress = intent?.getStringExtra(EXTRA_ADDRESS)
+        dnsServers = intent?.getStringExtra(EXTRA_DNS)
+        serverPublicKey = intent?.getStringExtra(EXTRA_PUBLIC_KEY)
+        serverEndpoint = intent?.getStringExtra(EXTRA_ENDPOINT)
+
+        if (clientPrivateKey == null || serverEndpoint == null) {
+            Log.e(TAG, "Missing config extras")
+            stopSelf()
             return START_NOT_STICKY
         }
 
@@ -101,20 +119,20 @@ class WireGuardVpnService : VpnService() {
 
     private fun createWireGuardConfig(): Config {
         val interfaceBuilder = Interface.Builder()
-        interfaceBuilder.parsePrivateKey(CLIENT_PRIVATE_KEY)
-        interfaceBuilder.parseAddresses(CLIENT_ADDRESS)
-        interfaceBuilder.parseDnsServers(DNS_SERVERS)
+        interfaceBuilder.parsePrivateKey(clientPrivateKey!!)
+        interfaceBuilder.parseAddresses(clientAddress!!)
+        interfaceBuilder.parseDnsServers(dnsServers!!)
         
         val peerBuilder = Peer.Builder()
-        peerBuilder.parsePublicKey(SERVER_PUBLIC_KEY)
-        peerBuilder.parseEndpoint(SERVER_ENDPOINT)
+        peerBuilder.parsePublicKey(serverPublicKey!!)
+        peerBuilder.parseEndpoint(serverEndpoint!!)
         peerBuilder.parseAllowedIPs("0.0.0.0/0")  // Route all traffic
         peerBuilder.parsePersistentKeepalive("25")
         
         return Config.Builder()
-            .setInterface(interfaceBuilder.build())
-            .addPeer(peerBuilder.build())
-            .build()
+        .setInterface(interfaceBuilder.build())
+        .addPeer(peerBuilder.build())
+        .build()
     }
 
     private fun stopVpn() {
