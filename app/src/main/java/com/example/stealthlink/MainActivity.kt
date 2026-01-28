@@ -18,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -374,6 +376,7 @@ fun HomeScreen(
 }
 
 @Composable
+@Composable
 fun SubscriptionScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -382,6 +385,17 @@ fun SubscriptionScreen() {
     var updateInfo by remember { mutableStateOf<com.example.stealthlink.update.UpdateManager.UpdateInfo?>(null) }
     var isDownloading by remember { mutableStateOf(false) }
     
+    // Tariffs
+    val tariffs = remember {
+        listOf(
+            Tariff("1 месяц", "100.00", "100 ₽", false),
+            Tariff("3 месяца", "250.00", "250 ₽", true),
+            Tariff("1 год", "800.00", "800 ₽", false)
+        )
+    }
+    var selectedTariff by remember { mutableStateOf(tariffs[1]) } // Default to 3 months
+    var isPaymentProcessing by remember { mutableStateOf(false) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally, 
         modifier = Modifier.fillMaxWidth()
@@ -389,22 +403,48 @@ fun SubscriptionScreen() {
         Text("ПРЕМИУМ", fontSize = 24.sp, color = GoldPrimary, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         
-        TariffCard("1 месяц", "100 ₽", false)
-        Spacer(modifier = Modifier.height(8.dp))
-        TariffCard("3 месяца", "250 ₽", true)
-        Spacer(modifier = Modifier.height(8.dp))
-        TariffCard("1 год", "800 ₽", false)
+        tariffs.forEach { tariff ->
+            TariffCard(
+                tariff = tariff, 
+                isSelected = selectedTariff == tariff,
+                onClick = { selectedTariff = tariff }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         
         Spacer(modifier = Modifier.height(24.dp))
         
         Button(
             onClick = {
-                Toast.makeText(context, "Переход к оплате...", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    isPaymentProcessing = true
+                    try {
+                        val request = com.example.stealthlink.data.model.PaymentRequest(
+                            amount = selectedTariff.value,
+                            description = "Подписка VpnCode: ${selectedTariff.name}"
+                        )
+                        val response = com.example.stealthlink.data.api.RetrofitClient.api.createPayment(request)
+                        
+                        // Open confirmation URL
+                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(response.confirmation_url))
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Ошибка создания платежа: ${e.message}", Toast.LENGTH_LONG).show()
+                        e.printStackTrace()
+                    } finally {
+                        isPaymentProcessing = false
+                    }
+                }
             },
             modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary)
+            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary),
+            enabled = !isPaymentProcessing
         ) {
-            Text("Оформить подписку", color = DarkBackground, fontWeight = FontWeight.Bold)
+            if (isPaymentProcessing) {
+                CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(24.dp))
+            } else {
+                Text("Оформить подписку", color = DarkBackground, fontWeight = FontWeight.Bold)
+            }
         }
         
         Spacer(modifier = Modifier.height(8.dp))
@@ -483,25 +523,37 @@ fun SubscriptionScreen() {
     }
 }
 
+data class Tariff(
+    val name: String,
+    val value: String,
+    val displayPrice: String,
+    val isHit: Boolean
+)
+
 @Composable
-fun TariffCard(duration: String, price: String, isHit: Boolean) {
+fun TariffCard(tariff: Tariff, isSelected: Boolean, onClick: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) DarkSurface.copy(alpha=0.7f) else DarkSurface),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
-        border = if (isHit) androidx.compose.foundation.BorderStroke(2.dp, GoldPrimary) else null
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, GoldPrimary) else if (tariff.isHit) androidx.compose.foundation.BorderStroke(1.dp, GoldPrimary.copy(alpha=0.5f)) else null
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(duration, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                if (isHit) {
+                Text(tariff.name, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (tariff.isHit) {
                     Text("ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ", color = GoldPrimary, fontSize = 12.sp)
                 }
             }
-            Text(price, color = TextWhite, fontSize = 18.sp)
+            if (isSelected) {
+                Icon(Icons.Default.Check, contentDescription = "Selected", tint = GoldPrimary, modifier = Modifier.padding(end = 8.dp))
+            }
+            Text(tariff.displayPrice, color = TextWhite, fontSize = 18.sp)
         }
     }
 }
