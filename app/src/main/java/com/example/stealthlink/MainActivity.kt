@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
             startVpnService()
         } else {
             connectionState.value = ConnectionState.DISCONNECTED
-            Toast.makeText(this, "VPN permission denied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Отказано в доступе к VPN", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -359,14 +359,14 @@ fun HomeScreen(
     ) {
         // Premium Title
         Text(
-            "STEALTH LINK", 
+            "VpnCode", 
             fontSize = 32.sp, 
             fontWeight = FontWeight.Black, 
             color = GoldPrimary,
             letterSpacing = 2.sp
         )
         Text(
-            "SECURE VPN", 
+            "БЕЗОПАСНЫЙ VPN", 
             fontSize = 12.sp, 
             color = TextGray, 
             letterSpacing = 4.sp
@@ -423,9 +423,9 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         when (connectionState) {
-                            ConnectionState.CONNECTED -> "STOP"
+                            ConnectionState.CONNECTED -> "СТОП"
                             ConnectionState.CONNECTING -> "..."
-                            else -> "START"
+                            else -> "СТАРТ"
                         },
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
@@ -454,9 +454,9 @@ fun HomeScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 when (connectionState) {
-                    ConnectionState.DISCONNECTED -> "DISCONNECTED"
-                    ConnectionState.CONNECTING -> "CONNECTING..."
-                    ConnectionState.CONNECTED -> "SECURELY CONNECTED"
+                    ConnectionState.DISCONNECTED -> "ОТКЛЮЧЕНО"
+                    ConnectionState.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
+                    ConnectionState.CONNECTED -> "ПОДКЛЮЧЕНО"
                 },
                 color = TextWhite,
                 fontSize = 14.sp,
@@ -479,17 +479,17 @@ fun HomeScreen(
             ) {
                 when {
                     trialInfo.neverStarted -> {
-                         Text("Free Trial Available", color = TextWhite, fontWeight = FontWeight.Bold)
+                         Text("Пробный период", color = TextWhite, fontWeight = FontWeight.Bold)
                          Spacer(modifier = Modifier.height(8.dp))
                          Button(
                             onClick = onStartTrial,
                             colors = ButtonDefaults.buttonColors(containerColor = PremiumGoldStart)
                         ) {
-                            Text("Activate 24h Access", color = DarkBackground)
+                            Text("Активировать (24ч)", color = DarkBackground)
                         }
                     }
                     trialInfo.isActive -> {
-                        Text("Trial Active", color = GreenSuccess, fontWeight = FontWeight.Bold)
+                        Text("Пробный период активен", color = GreenSuccess, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = trialInfo.hoursRemaining / 24f,
@@ -498,12 +498,12 @@ fun HomeScreen(
                             trackColor = DarkBackground
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("${trialInfo.hoursRemaining} hours remaining", color = TextGray, fontSize = 12.sp)
+                        Text("${trialInfo.hoursRemaining} часов осталось", color = TextGray, fontSize = 12.sp)
                     }
                     trialInfo.hasExpired -> {
-                        Text("Trial Expired", color = RedStop, fontWeight = FontWeight.Bold)
+                        Text("Период истек", color = RedStop, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Please upgrade to Premium", color = TextGray, fontSize = 12.sp)
+                        Text("Оформите подписку", color = TextGray, fontSize = 12.sp)
                     }
                 }
             }
