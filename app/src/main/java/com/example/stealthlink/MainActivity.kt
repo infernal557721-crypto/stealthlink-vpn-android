@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                 .apply()
             // Update trial state immediately
             trialInfoState.value = getTrialInfo()
-            Toast.makeText(this, "Пробный период активирован на 7 дней!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Тестовый период (7 дней) активирован!", Toast.LENGTH_SHORT).show()
         }
     }
 
