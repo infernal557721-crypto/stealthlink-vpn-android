@@ -84,6 +84,9 @@ class MainActivity : ComponentActivity() {
         // Check for updates on launch
         checkForUpdatesOnLaunch()
         
+        // Fetch status from server
+        fetchUserStatus()
+        
         setContent {
             StealthLinkTheme {
                 MainScreen(
@@ -161,44 +164,53 @@ class MainActivity : ComponentActivity() {
         notificationManager.notify(1001, notification)
     }
     
-    private fun initializeTrial() {
-        if (!prefs.contains("first_launch_time")) {
-            prefs.edit().putLong("first_launch_time", System.currentTimeMillis()).apply()
+    private fun fetchUserStatus() {
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch {
+            try {
+                val deviceId = android.provider.Settings.Secure.getString(
+                    contentResolver, 
+                    android.provider.Settings.Secure.ANDROID_ID
+                )
+                val request = com.example.stealthlink.data.api.ConfigRequest(deviceId)
+                
+                // We use getVpnConfig to get status as well (it creates user if needed)
+                val config = com.example.stealthlink.data.api.RetrofitClient.api.getVpnConfig(request)
+                
+                withContext(Dispatchers.Main) {
+                    val hours = (config.remaining_seconds / 3600).toInt()
+                    trialInfoState.value = TrialInfo(
+                        isActive = config.is_active,
+                        hoursRemaining = hours,
+                        hasExpired = !config.is_active,
+                        neverStarted = false // Server handles start automatically now
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // If 403, it means expired
+                if (e is retrofit2.HttpException && e.code() == 403) {
+                     withContext(Dispatchers.Main) {
+                        trialInfoState.value = TrialInfo(isActive = false, hoursRemaining = 0, hasExpired = true, neverStarted = false)
+                     }
+                }
+            }
         }
-        // Update trial state
-        trialInfoState.value = getTrialInfo()
+    }
+    
+    private fun initializeTrial() {
+        // Legacy local init removed, rely on fetchUserStatus
     }
     
     private fun startTrial() {
-        if (!prefs.getBoolean("trial_started", false)) {
-            prefs.edit()
-                .putBoolean("trial_started", true)
-                .putLong("trial_start_time", System.currentTimeMillis())
-                .apply()
-            // Update trial state immediately
-            trialInfoState.value = getTrialInfo()
-            Toast.makeText(this, "Тестовый период (7 дней) активирован!", Toast.LENGTH_SHORT).show()
-        }
+        // Logic moved to server. Just refresh status.
+        fetchUserStatus()
+        Toast.makeText(this, "Обновление статуса...", Toast.LENGTH_SHORT).show()
     }
 
     
     private fun getTrialInfo(): TrialInfo {
-        val trialStarted = prefs.getBoolean("trial_started", false)
-        if (!trialStarted) {
-            return TrialInfo(isActive = false, hoursRemaining = 24, hasExpired = false, neverStarted = true)
-        }
-        
-        val trialStartTime = prefs.getLong("trial_start_time", 0)
-        val trialDuration = 7L * 24 * 60 * 60 * 1000L // 7 days
-        val elapsed = System.currentTimeMillis() - trialStartTime
-        val remaining = trialDuration - elapsed
-        
-        return if (remaining > 0) {
-            val hoursRemaining = (remaining / (60 * 60 * 1000)).toInt()
-            TrialInfo(isActive = true, hoursRemaining = hoursRemaining, hasExpired = false, neverStarted = false)
-        } else {
-            TrialInfo(isActive = false, hoursRemaining = 0, hasExpired = true, neverStarted = false)
-        }
+        return trialInfoState.value
     }
     
     private fun requestVpnPermissionAndConnect() {
@@ -259,9 +271,16 @@ class MainActivity : ComponentActivity() {
                 
                 connectionState.value = ConnectionState.CONNECTED
                 
-                // Update local trial info to match successful connection
-                // This is just for UI, the real check is on backend
-                trialInfoState.value = trialInfoState.value.copy(isActive = true, hasExpired = false)
+                connectionState.value = ConnectionState.CONNECTED
+                
+                // Update info from config
+                val hours = (config.remaining_seconds / 3600).toInt()
+                trialInfoState.value = TrialInfo(
+                    isActive = config.is_active,
+                    hoursRemaining = hours,
+                    hasExpired = !config.is_active,
+                    neverStarted = false
+                )
 
             } catch (e: Exception) {
                 e.printStackTrace()
