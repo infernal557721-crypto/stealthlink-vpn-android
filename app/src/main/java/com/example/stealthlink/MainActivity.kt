@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                 .apply()
             // Update trial state immediately
             trialInfoState.value = getTrialInfo()
-            Toast.makeText(this, "Пробный период активирован на 24 часа!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Пробный период активирован на 7 дней!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
         }
         
         val trialStartTime = prefs.getLong("trial_start_time", 0)
-        val trialDuration = 24 * 60 * 60 * 1000L // 24 hours
+        val trialDuration = 7L * 24 * 60 * 60 * 1000L // 7 days
         val elapsed = System.currentTimeMillis() - trialStartTime
         val remaining = trialDuration - elapsed
         
@@ -485,7 +485,7 @@ fun HomeScreen(
                             onClick = onStartTrial,
                             colors = ButtonDefaults.buttonColors(containerColor = PremiumGoldStart)
                         ) {
-                            Text("Активировать (24ч)", color = DarkBackground)
+                            Text("Активировать (7 дней)", color = DarkBackground)
                         }
                     }
                     trialInfo.isActive -> {
