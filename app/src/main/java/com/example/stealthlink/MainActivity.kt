@@ -57,7 +57,7 @@ data class TrialInfo(
 class MainActivity : ComponentActivity() {
     
     private var connectionState = mutableStateOf(ConnectionState.DISCONNECTED)
-    private var trialInfoState = mutableStateOf(TrialInfo(false, 24, false, true))
+    private var trialInfoState = mutableStateOf(TrialInfo(false, 24, false, false)) // Start as loading
     private lateinit var prefs: SharedPreferences
     
     private val vpnPermissionLauncher = registerForActivityResult(
@@ -203,9 +203,9 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startTrial() {
-        // Logic moved to server. Just refresh status.
+        // Refresh status from server and show feedback
+        Toast.makeText(this, "Загрузка...", Toast.LENGTH_SHORT).show()
         fetchUserStatus()
-        Toast.makeText(this, "Обновление статуса...", Toast.LENGTH_SHORT).show()
     }
 
     
@@ -503,7 +503,7 @@ fun HomeScreen(
                             onClick = onStartTrial,
                             colors = ButtonDefaults.buttonColors(containerColor = PremiumGoldStart)
                         ) {
-                            Text("Активировать (7 дней)", color = DarkBackground)
+                            Text("Активировать (24 часа)", color = DarkBackground)
                         }
                     }
                     trialInfo.isActive -> {
