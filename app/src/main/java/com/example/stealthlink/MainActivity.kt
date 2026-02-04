@@ -412,8 +412,7 @@ fun HomeScreen(
                 },
                 modifier = Modifier
                     .size(200.dp)
-                    .size(200.dp)
-                    .scale(scale), // Use imported extension directly
+                    .scale(scale), // Pulsing animation
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when (connectionState) {
@@ -573,9 +572,16 @@ fun SubscriptionScreen() {
                 scope.launch {
                     isPaymentProcessing = true
                     try {
+                        // Get device ID for user identification
+                        val deviceId = android.provider.Settings.Secure.getString(
+                            context.contentResolver, 
+                            android.provider.Settings.Secure.ANDROID_ID
+                        )
+                        
                         val request = com.example.stealthlink.data.model.PaymentRequest(
                             amount = selectedTariff.value,
-                            description = "Подписка VpnCode: ${selectedTariff.name}"
+                            description = "Подписка VpnCode: ${selectedTariff.name}",
+                            user_id = deviceId
                         )
                         val response = com.example.stealthlink.data.api.RetrofitClient.api.createPayment(request)
                         
