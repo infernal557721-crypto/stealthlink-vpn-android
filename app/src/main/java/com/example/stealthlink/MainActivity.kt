@@ -39,9 +39,9 @@ import com.example.stealthlink.services.WireGuardVpnService
 import com.example.stealthlink.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
 
 enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED
@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun checkForUpdatesOnLaunch() {
-        GlobalScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 // ... update check code ...
             } catch (e: Exception) {
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
 
     // Timer to update trial status and auto-disconnect
     private fun startTrialTimer() {
-        GlobalScope.launch(Dispatchers.Main) {
+        lifecycleScope.launch(Dispatchers.Main) {
             while (true) {
                 kotlinx.coroutines.delay(10000) // Check every 10 seconds
                 trialInfoState.value = getTrialInfo()
