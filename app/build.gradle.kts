@@ -13,11 +13,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.stealthlink"
+        applicationId = "com.vpncode.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -45,7 +45,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("stableDebug") // In real prod, use a release key
+            signingConfig = signingConfigs.getByName("stableDebug")
         }
         debug {
             signingConfig = signingConfigs.getByName("stableDebug")
