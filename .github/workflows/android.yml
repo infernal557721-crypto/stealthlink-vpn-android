@@ -40,13 +40,16 @@ jobs:
         echo "Detected version: ${VERSION_NAME} (code: ${VERSION_CODE})"
 
     - name: Build with Gradle
-      run: gradle assembleDebug --stacktrace --no-daemon
+      run: gradle assembleRelease --stacktrace --no-daemon
 
-    - name: Upload Debug APK as artifact
+    - name: Rename APK
+      run: cp app/build/outputs/apk/release/app-release.apk vpncode.apk
+
+    - name: Upload APK as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: vpncode-apk
+        path: vpncode.apk
 
     - name: Check if release exists
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -76,9 +79,31 @@ jobs:
 
           ### Поддержка:
           Бот: @VpnCodeRU_bot
-        files: |
-          app/build/outputs/apk/debug/app-debug.apk
+        files: vpncode.apk
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Deploy APK to VPS
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: 81.200.154.49
+        username: root
+        password: ${{ secrets.VPS_PASSWORD }}
+        source: "vpncode.apk"
+        target: "/var/www/vpncode/"
+
+    - name: Update version.json on VPS
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: 81.200.154.49
+        username: root
+        password: ${{ secrets.VPS_PASSWORD }}
+        script: |
+          mkdir -p /var/www/vpncode
+          printf '{"version":"%s","versionCode":%s}' "${{ steps.version.outputs.VERSION_NAME }}" "${{ steps.version.outputs.VERSION_CODE }}" > /var/www/vpncode/version.json
+          chmod 644 /var/www/vpncode/vpncode.apk /var/www/vpncode/version.json
+          echo "Deployed VpnCode v${{ steps.version.outputs.VERSION_NAME }}"
