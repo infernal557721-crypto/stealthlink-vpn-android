@@ -29,10 +29,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale // Keep this import
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.animation.core.* // Import animations
+import androidx.compose.animation.core.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,7 +59,7 @@ data class TrialInfo(
 class MainActivity : ComponentActivity() {
     
     private var connectionState = mutableStateOf(ConnectionState.DISCONNECTED)
-    private var trialInfoState = mutableStateOf(TrialInfo(false, 24, false, false)) // Start as loading
+    private var trialInfoState = mutableStateOf(TrialInfo(false, 24, false, false))
     private lateinit var prefs: SharedPreferences
     
     private val vpnPermissionLauncher = registerForActivityResult(
@@ -77,16 +77,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("stealthlink_prefs", Context.MODE_PRIVATE)
         
-        // Initialize trial on first launch
         initializeTrial()
-        
-        // Start proactive trial monitor
         startTrialTimer()
-        
-        // Check for updates on launch
         checkForUpdatesOnLaunch()
-        
-        // Fetch status from server
         fetchUserStatus()
         
         setContent {
@@ -105,20 +98,17 @@ class MainActivity : ComponentActivity() {
     private fun checkForUpdatesOnLaunch() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ... update check code ...
+                // silent update check
             } catch (e: Exception) {
             }
         }
     }
 
-    // Timer to update trial status and auto-disconnect
     private fun startTrialTimer() {
         lifecycleScope.launch(Dispatchers.Main) {
             while (true) {
-                kotlinx.coroutines.delay(10000) // Check every 10 seconds
+                kotlinx.coroutines.delay(10000)
                 trialInfoState.value = getTrialInfo()
-                
-                // Auto-disconnect if expired
                 if (trialInfoState.value.hasExpired && connectionState.value == ConnectionState.CONNECTED) {
                     stopVpnService()
                     Toast.makeText(this@MainActivity, "Пробный период завершен", Toast.LENGTH_LONG).show()
@@ -129,8 +119,6 @@ class MainActivity : ComponentActivity() {
     
     private fun showUpdateNotification(newVersion: String) {
         val channelId = "update_channel"
-        
-        // Create notification channel for Android 8.0+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 channelId,
@@ -142,8 +130,6 @@ class MainActivity : ComponentActivity() {
             val notificationManager = getSystemService(android.app.NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
-        
-        // Create intent to open app
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra("open_updates", true)
@@ -152,7 +138,6 @@ class MainActivity : ComponentActivity() {
             this, 0, intent,
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
         )
-        
         val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Доступно обновление!")
@@ -161,7 +146,6 @@ class MainActivity : ComponentActivity() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
-        
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(1001, notification)
     }
@@ -171,54 +155,46 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             try {
                 val deviceId = android.provider.Settings.Secure.getString(
-                    contentResolver, 
+                    contentResolver,
                     android.provider.Settings.Secure.ANDROID_ID
                 )
                 val request = com.example.stealthlink.data.api.ConfigRequest(deviceId)
-                
-                // We use getVpnConfig to get status as well (it creates user if needed)
                 val config = com.example.stealthlink.data.api.RetrofitClient.api.getVpnConfig(request)
-                
                 withContext(Dispatchers.Main) {
-                    val hours = (config.remaining_seconds / 3600).toInt()
+                    val hours = (config.subscription.remaining_seconds / 3600).toInt()
                     trialInfoState.value = TrialInfo(
-                        isActive = config.is_active,
+                        isActive = config.subscription.is_active,
                         hoursRemaining = hours,
-                        hasExpired = !config.is_active,
-                        neverStarted = false // Server handles start automatically now
+                        hasExpired = !config.subscription.is_active,
+                        neverStarted = false
                     )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                // If 403, it means expired
                 if (e is retrofit2.HttpException && e.code() == 403) {
-                     withContext(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         trialInfoState.value = TrialInfo(isActive = false, hoursRemaining = 0, hasExpired = true, neverStarted = false)
-                     }
+                    }
                 }
             }
         }
     }
     
     private fun initializeTrial() {
-        // Legacy local init removed, rely on fetchUserStatus
+        // Rely on fetchUserStatus
     }
     
     private fun startTrial() {
-        // Refresh status from server and show feedback
         Toast.makeText(this, "Загрузка...", Toast.LENGTH_SHORT).show()
         fetchUserStatus()
     }
 
-    
     private fun getTrialInfo(): TrialInfo {
         return trialInfoState.value
     }
     
     private fun requestVpnPermissionAndConnect() {
         val trialInfo = getTrialInfo()
-        
-        // Check if user can connect (trial active or has subscription)
         if (trialInfo.hasExpired) {
             Toast.makeText(this, "Пробный период закончился. Оформите подписку.", Toast.LENGTH_LONG).show()
             return
@@ -227,9 +203,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Активируйте пробный период", Toast.LENGTH_SHORT).show()
             return
         }
-        
         connectionState.value = ConnectionState.CONNECTING
-        
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
             vpnPermissionLauncher.launch(prepareIntent)
@@ -242,51 +216,38 @@ class MainActivity : ComponentActivity() {
         val scope = CoroutineScope(Dispatchers.Main)
         scope.launch {
             try {
-                // Get Device ID (using ANDROID_ID for simplicity in this demo)
-                // In production, consider a more robust ID or Advertising ID
                 val deviceId = android.provider.Settings.Secure.getString(
-                    contentResolver, 
+                    contentResolver,
                     android.provider.Settings.Secure.ANDROID_ID
                 )
-
-                // Show loading 
                 connectionState.value = ConnectionState.CONNECTING
-
                 val config = withContext(Dispatchers.IO) {
                     val request = com.example.stealthlink.data.api.ConfigRequest(deviceId)
                     com.example.stealthlink.data.api.RetrofitClient.api.getVpnConfig(request)
                 }
-
                 val intent = Intent(this@MainActivity, WireGuardVpnService::class.java)
-                
-                intent.putExtra(WireGuardVpnService.EXTRA_PUBLIC_KEY, config.public_key)
-                intent.putExtra(WireGuardVpnService.EXTRA_ENDPOINT, config.endpoint)
-                intent.putExtra(WireGuardVpnService.EXTRA_PRIVATE_KEY, config.private_key)
-                intent.putExtra(WireGuardVpnService.EXTRA_ADDRESS, config.address)
-                intent.putExtra(WireGuardVpnService.EXTRA_DNS, config.dns)
-                
+                intent.putExtra(WireGuardVpnService.EXTRA_PUBLIC_KEY, config.wireguard.server_public_key)
+                intent.putExtra(WireGuardVpnService.EXTRA_ENDPOINT, config.wireguard.endpoint)
+                intent.putExtra(WireGuardVpnService.EXTRA_PRIVATE_KEY, config.wireguard.private_key)
+                intent.putExtra(WireGuardVpnService.EXTRA_ADDRESS, config.wireguard.address)
+                intent.putExtra(WireGuardVpnService.EXTRA_DNS, config.wireguard.dns)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(intent)
                 } else {
                     startService(intent)
                 }
-                
                 connectionState.value = ConnectionState.CONNECTED
-                
-                // Update info from config
-                val hours = (config.remaining_seconds / 3600).toInt()
+                val hours = (config.subscription.remaining_seconds / 3600).toInt()
                 trialInfoState.value = TrialInfo(
-                    isActive = config.is_active,
+                    isActive = config.subscription.is_active,
                     hoursRemaining = hours,
-                    hasExpired = !config.is_active,
+                    hasExpired = !config.subscription.is_active,
                     neverStarted = false
                 )
-
             } catch (e: Exception) {
                 e.printStackTrace()
                 android.util.Log.e("VPN", "Connection error", e)
                 connectionState.value = ConnectionState.DISCONNECTED
-                
                 val errorMsg = when {
                     e is retrofit2.HttpException && e.code() == 403 -> {
                         trialInfoState.value = trialInfoState.value.copy(isActive = false, hasExpired = true)
@@ -327,19 +288,19 @@ fun MainScreen(
                 contentColor = TextWhite
             ) {
                 NavigationBarItem(
-                    icon = { 
+                    icon = {
                         Icon(
-                            Icons.Default.Home, 
+                            Icons.Default.Home,
                             contentDescription = "Главная",
                             tint = if (selectedTab == 0) GoldPrimary else TextGray
-                        ) 
+                        )
                     },
-                    label = { 
+                    label = {
                         Text(
-                            "Главная", 
+                            "Главная",
                             color = if (selectedTab == 0) GoldPrimary else TextGray,
                             fontSize = 11.sp
-                        ) 
+                        )
                     },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -350,19 +311,19 @@ fun MainScreen(
                     )
                 )
                 NavigationBarItem(
-                    icon = { 
+                    icon = {
                         Icon(
-                            Icons.Default.ShoppingCart, 
+                            Icons.Default.ShoppingCart,
                             contentDescription = "Подписка",
                             tint = if (selectedTab == 1) GoldPrimary else TextGray
-                        ) 
+                        )
                     },
-                    label = { 
+                    label = {
                         Text(
-                            "Подписка", 
+                            "Подписка",
                             color = if (selectedTab == 1) GoldPrimary else TextGray,
                             fontSize = 11.sp
-                        ) 
+                        )
                     },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
@@ -397,14 +358,13 @@ fun HomeScreen(
     onDisconnect: () -> Unit,
     onStartTrial: () -> Unit
 ) {
-    // Animation for glow effect
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+    val infiniteTransition = rememberInfiniteTransition()
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 0.7f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(1500),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Reverse
         )
     )
 
@@ -421,7 +381,6 @@ fun HomeScreen(
                 )
             )
     ) {
-        // Diagonal lines overlay (decorative)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val lineColor = Color(0x10D4A84B)
             for (i in 0..20) {
@@ -440,44 +399,34 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(24.dp)
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // Crown Icon
-            Text(
-                "👑",
-                fontSize = 32.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            // Premium Title
+            Spacer(modifier = Modifier.height(48.dp))
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Vpn", 
-                    fontSize = 36.sp, 
-                    fontWeight = FontWeight.Light, 
+                    "Vpn",
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Light,
                     color = TextWhite,
                     letterSpacing = 1.sp
                 )
                 Text(
-                    "Code", 
-                    fontSize = 36.sp, 
-                    fontWeight = FontWeight.Bold, 
+                    "Code",
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
                     color = GoldPrimary,
                     letterSpacing = 1.sp
                 )
             }
             Text(
-                "БЕЗОПАСНЫЙ VPN", 
-                fontSize = 11.sp, 
-                color = TextGray, 
+                "БЕЗОПАСНЫЙ VPN",
+                fontSize = 11.sp,
+                color = TextGray,
                 letterSpacing = 4.sp
             )
-            
+
             Spacer(modifier = Modifier.height(48.dp))
-            
-            // Connection Button with Golden Ring
+
             Box(contentAlignment = Alignment.Center) {
-                // Outer Glow
                 if (connectionState == ConnectionState.CONNECTED) {
                     Box(
                         modifier = Modifier
@@ -507,8 +456,7 @@ fun HomeScreen(
                             )
                     )
                 }
-                
-                // Golden/Green Ring
+
                 Box(
                     modifier = Modifier
                         .size(200.dp)
@@ -524,10 +472,9 @@ fun HomeScreen(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Inner Button
                     Button(
-                        onClick = { 
-                            if (connectionState == ConnectionState.DISCONNECTED) onConnect() 
+                        onClick = {
+                            if (connectionState == ConnectionState.DISCONNECTED) onConnect()
                             else if (connectionState == ConnectionState.CONNECTED) onDisconnect()
                         },
                         modifier = Modifier.size(170.dp),
@@ -543,14 +490,14 @@ fun HomeScreen(
                             defaultElevation = 8.dp,
                             pressedElevation = 4.dp
                         ),
-                        enabled = connectionState != ConnectionState.CONNECTING && 
+                        enabled = connectionState != ConnectionState.CONNECTING &&
                                   (trialInfo.isActive || !trialInfo.hasExpired && !trialInfo.neverStarted)
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = if (connectionState == ConnectionState.CONNECTED) 
-                                    Icons.Default.Stop 
-                                else 
+                                imageVector = if (connectionState == ConnectionState.CONNECTED)
+                                    Icons.Default.Stop
+                                else
                                     Icons.Default.PlayArrow,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
@@ -570,8 +517,7 @@ fun HomeScreen(
                         }
                     }
                 }
-                
-                // Connecting spinner
+
                 if (connectionState == ConnectionState.CONNECTING) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(210.dp),
@@ -580,10 +526,9 @@ fun HomeScreen(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
-            // Status Text
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -593,7 +538,7 @@ fun HomeScreen(
                                 ConnectionState.CONNECTED -> GreenSuccess
                                 ConnectionState.CONNECTING -> GoldPrimary
                                 else -> TextGray
-                            }, 
+                            },
                             CircleShape
                         )
                 )
@@ -610,8 +555,7 @@ fun HomeScreen(
                     letterSpacing = 2.sp
                 )
             }
-            
-            // Subtitle status
+
             Text(
                 when (connectionState) {
                     ConnectionState.CONNECTED -> "Ваше соединение защищено"
@@ -621,29 +565,13 @@ fun HomeScreen(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
-            // Info Cards
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Server Info Card
-                InfoCard(
-                    icon = "🌐",
-                    title = "Текущий сервер:",
-                    value = if (connectionState == ConnectionState.CONNECTED) "Россия, Москва" else "Нет подключения"
-                )
-                
-                // Traffic Card
-                InfoCard(
-                    icon = "📊",
-                    title = "Трафик за сегодня:",
-                    value = if (connectionState == ConnectionState.CONNECTED) "0 МБ" else "0 МБ"
-                )
-                
-                // Trial/Subscription Card
                 if (trialInfo.neverStarted) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = DarkSurface.copy(alpha = 0.8f)),
@@ -654,7 +582,7 @@ fun HomeScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🎁", fontSize = 24.sp)
+                            Text("\uD83C\uDF81", fontSize = 24.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Пробный период", color = TextWhite, fontWeight = FontWeight.Medium)
@@ -677,14 +605,17 @@ fun HomeScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("⏰", fontSize = 20.sp)
+                                Text("\u23F0", fontSize = 20.sp)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text("Осталось: ${trialInfo.hoursRemaining}ч", color = GreenSuccess, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             LinearProgressIndicator(
                                 progress = trialInfo.hoursRemaining.coerceIn(0, 24) / 24f,
-                                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
                                 color = GoldPrimary,
                                 trackColor = DarkBackground
                             )
@@ -700,7 +631,7 @@ fun HomeScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("⚠️", fontSize = 20.sp)
+                            Text("\u26A0\uFE0F", fontSize = 20.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Text("Период истёк. Оформите подписку", color = TextWhite, fontSize = 14.sp)
                         }
@@ -740,13 +671,12 @@ fun SubscriptionScreen() {
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<com.example.stealthlink.update.UpdateManager.UpdateInfo?>(null) }
     var isDownloading by remember { mutableStateOf(false) }
-    
-    // Tariffs
+
     val tariffs = remember {
         listOf(
-            Tariff("1 месяц", "100.00", "100 ₽", false),
-            Tariff("3 месяца", "250.00", "250 ₽", true),
-            Tariff("1 год", "800.00", "800 ₽", false)
+            Tariff("1 месяц", "100.00", "100 \u20BD", false),
+            Tariff("3 месяца", "250.00", "250 \u20BD", true),
+            Tariff("1 год", "800.00", "800 \u20BD", false)
         )
     }
     var selectedTariff by remember { mutableStateOf(tariffs[1]) }
@@ -766,53 +696,48 @@ fun SubscriptionScreen() {
             )
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally, 
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp)
         ) {
             Spacer(modifier = Modifier.height(32.dp))
-            
-            // Header
+
             Text(
-                "Оформить подписку", 
-                fontSize = 24.sp, 
-                color = TextWhite, 
+                "Оформить подписку",
+                fontSize = 24.sp,
+                color = TextWhite,
                 fontWeight = FontWeight.Bold
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
-            // Tariff cards
+
             tariffs.forEach { tariff ->
                 PremiumTariffCard(
-                    tariff = tariff, 
+                    tariff = tariff,
                     isSelected = selectedTariff == tariff,
                     onClick = { selectedTariff = tariff }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
-            
+
             Spacer(modifier = Modifier.weight(1f))
-            
-            // Pay button
+
             Button(
                 onClick = {
                     scope.launch {
                         isPaymentProcessing = true
                         try {
                             val deviceId = android.provider.Settings.Secure.getString(
-                                context.contentResolver, 
+                                context.contentResolver,
                                 android.provider.Settings.Secure.ANDROID_ID
                             )
-                            
                             val request = com.example.stealthlink.data.model.PaymentRequest(
                                 amount = selectedTariff.value,
                                 description = "Подписка VpnCode: ${selectedTariff.name}",
                                 user_id = deviceId
                             )
                             val response = com.example.stealthlink.data.api.RetrofitClient.api.createPayment(request)
-                            
                             val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(response.confirmation_url))
                             context.startActivity(intent)
                         } catch (e: Exception) {
@@ -826,33 +751,23 @@ fun SubscriptionScreen() {
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = GoldPrimary
-                ),
+                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary),
                 enabled = !isPaymentProcessing
             ) {
                 if (isPaymentProcessing) {
                     CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(24.dp))
                 } else {
                     Text(
-                        "Оплатить", 
-                        color = DarkBackground, 
+                        "Оплатить",
+                        color = DarkBackground,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Безопасные платежи через ЮKassa", 
-                color = TextGray, 
-                fontSize = 12.sp
-            )
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
-            // Check updates
+
             TextButton(
                 onClick = {
                     isCheckingUpdate = true
@@ -880,23 +795,22 @@ fun SubscriptionScreen() {
                     fontSize = 14.sp
                 )
             }
-            
+
             Text(
-                "Версия: ${BuildConfig.VERSION_NAME}", 
-                color = TextGray.copy(alpha = 0.5f), 
+                "Версия: ${BuildConfig.VERSION_NAME}",
+                color = TextGray.copy(alpha = 0.5f),
                 fontSize = 11.sp
             )
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
-    
-    // Update dialog
+
     if (showUpdateDialog && updateInfo != null) {
         AlertDialog(
             onDismissRequest = { showUpdateDialog = false },
             title = { Text("Доступно обновление", color = TextWhite, fontWeight = FontWeight.Bold) },
-            text = { 
+            text = {
                 Text(
                     "Версия ${updateInfo!!.versionName}\n\nСкачать и установить?",
                     color = TextGray
@@ -966,21 +880,20 @@ fun PremiumTariffCard(tariff: Tariff, isSelected: Boolean, onClick: () -> Unit) 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    tariff.name, 
-                    color = if (isSelected) GoldPrimary else TextWhite, 
-                    fontWeight = FontWeight.Medium, 
+                    tariff.name,
+                    color = if (isSelected) GoldPrimary else TextWhite,
+                    fontWeight = FontWeight.Medium,
                     fontSize = 18.sp
                 )
                 Text(
-                    tariff.displayPrice, 
-                    color = TextWhite, 
+                    tariff.displayPrice,
+                    color = TextWhite,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
             }
         }
-        
-        // ХИТ badge
+
         if (tariff.isHit) {
             Box(
                 modifier = Modifier
@@ -995,7 +908,7 @@ fun PremiumTariffCard(tariff: Tariff, isSelected: Boolean, onClick: () -> Unit) 
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    "ХИТ",
+                    "\u0425\u0418\u0422",
                     color = DarkBackground,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -1005,9 +918,7 @@ fun PremiumTariffCard(tariff: Tariff, isSelected: Boolean, onClick: () -> Unit) 
     }
 }
 
-// Keep old TariffCard for compatibility
 @Composable
 fun TariffCard(tariff: Tariff, isSelected: Boolean, onClick: () -> Unit) {
     PremiumTariffCard(tariff, isSelected, onClick)
 }
-
